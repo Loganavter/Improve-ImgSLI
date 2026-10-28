@@ -39,10 +39,11 @@ Out of scope (deliberately NOT migrated, documented here instead of an
 allowlist entry because the source scan below only matches the toolkit
 ``Label`` name):
 
-- ``export/dialog_sections.py::_ExportPreviewLabel`` — a ``QLabel`` subclass
-  that hosts the preview pixmap and overrides ``sizeHint``; it is a pixmap
-  surface, not a text display, and the P3 rules exclude ``Label``
-  subclasses / widgets relied on as a ``Label`` type.
+- ``export/preview_pane.py::ExportPreviewLabel`` — a ``QLabel`` subclass
+  that paints the preview source in ``paintEvent`` (no ``QLabel`` pixmap) and
+  overrides ``sizeHint``; it is a pixmap surface, not a text display, and the
+  P3 rules exclude ``Label`` subclasses / widgets relied on as a ``Label``
+  type.
 - The document surface itself — ``Text(mode="document")`` in the external
   toolkit; the app hosts its chrome (TOC / lightbox / scroll area) around it.
 
@@ -128,11 +129,11 @@ def test_slice2_plugin_sources_have_no_label_construction_or_import():
 
 def test_out_of_scope_surfaces_are_not_the_toolkit_label():
     """Pin the two documented non-migrations to their real types."""
-    from plugins.export import dialog_sections
+    from plugins.export import preview_pane
 
-    # Preview surface: a QLabel subclass owning a pixmap, never a Label.
-    assert issubclass(dialog_sections._ExportPreviewLabel, dialog_sections.QLabel)
-    assert not issubclass(dialog_sections._ExportPreviewLabel, Label)
+    # Preview surface: a QLabel subclass painting the source, never a Label.
+    assert issubclass(preview_pane.ExportPreviewLabel, preview_pane.QLabel)
+    assert not issubclass(preview_pane.ExportPreviewLabel, Label)
 
     # Image properties render through the document surface, not per-row Label.
     props_root = _PLUGINS_ROOT / "image_properties"

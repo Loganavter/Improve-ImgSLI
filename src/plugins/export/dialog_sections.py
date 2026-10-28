@@ -7,18 +7,17 @@ geometry via ``layout_geometry``.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIntValidator
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
-    QLabel,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
 from plugins.export import layout_geometry as export_geo
+from plugins.export.preview_pane import build_preview_pane
 from plugins.export.search import ACTIONS, BACKGROUND, OUTPUT, RESOLUTION
 from shared.image_processing.format_capability import writable_formats
 from sli_ui_toolkit.managers import scaled_px
@@ -39,56 +38,6 @@ from ui.widgets.slider_hint import ValueSlider
 #: (12 px) painted these labels visibly smaller than the value text, checkbox
 #: captions and buttons in the same dialog.
 _LABEL_VARIANT = "group-title"
-
-
-class _ExportPreviewLabel(QLabel):
-    """Preview surface whose sizeHint ignores the pixmap.
-
-    A normal QLabel reports the pixmap size as sizeHint; after CSD
-    ``adjustSize`` that blows the dialog up to hundreds of px and makes
-    ``export_preview_min_width()`` look like a no-op.
-    """
-
-    def sizeHint(self) -> QSize:
-        return QSize(
-            max(self.minimumWidth(), export_geo.export_preview_min_width()),
-            max(self.minimumHeight(), export_geo.export_preview_min_height()),
-        )
-
-    def minimumSizeHint(self) -> QSize:
-        return self.sizeHint()
-
-
-def build_preview_pane(dialog) -> QFrame:
-    left_frame = QFrame()
-    left_frame.setObjectName("ExportPreviewFrame")
-    dialog.export_preview_frame = left_frame
-    left_layout = QVBoxLayout(left_frame)
-    left_layout.setContentsMargins(scaled_px(8), scaled_px(8), scaled_px(8), scaled_px(8))
-    left_layout.setSpacing(scaled_px(8))
-
-    dialog.export_preview_title = Text(
-        dialog._tr("export.preview", "Preview"),
-        mode="plain",
-        variant=_LABEL_VARIANT,
-    )
-    dialog.export_preview_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    dialog.preview_label = _ExportPreviewLabel()
-    dialog.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    dialog.preview_label.setMinimumSize(
-        QSize(
-            export_geo.export_preview_min_width(),
-            export_geo.export_preview_min_height(),
-        )
-    )
-    dialog.preview_label.setFrameShape(QFrame.Shape.NoFrame)
-    dialog.preview_label.setSizePolicy(
-        QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-    )
-
-    left_layout.addWidget(dialog.export_preview_title)
-    left_layout.addWidget(dialog.preview_label, 1)
-    return left_frame
 
 
 def build_output_path_section(dialog) -> None:

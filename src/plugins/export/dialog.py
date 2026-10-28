@@ -6,8 +6,8 @@ from typing import Iterable
 
 import PIL.Image
 import shiboken6 as sip
-from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon, QImage, QMouseEvent, QPainter, QPixmap
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor, QIcon, QImage, QMouseEvent, QPixmap
 from shared_toolkit.ui.themed_dialog import ThemedDialog
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
 )
 
 from domain.qt_adapters import color_to_qcolor
-from plugins.export import layout_geometry as export_geo
 from plugins.export.dialog_sections import assemble_export_ui
 from plugins.export.layout_geometry import apply_export_dialog_geometry
 from plugins.export.models import ExportDialogState
@@ -136,10 +135,12 @@ class ExportDialog(ThemedDialog):
         settle_on_paint(self, self._csd_settle)
 
         self._preview_source_pixmap: QPixmap | None = None
-        # Cheap pixmap scale on pulse; quiet-period re-apply for final pane size.
+        # The label stretches the source itself on every paint; this gate only
+        # bakes one smooth frame for the size the resize settled on. Rebuilding
+        # the pixmap per resize frame is what made the pane look "killed and
+        # recreated" instead of stretched (2026-10-28).
         self._preview_resize_settle = SettleGate(
             on_settle=self._apply_preview_pixmap,
-            on_pulse=self._apply_preview_pixmap,
             interval_ms=SettleGate.DEFAULT_INTERVAL_MS,
             parent=self,
         )
@@ -653,22 +654,14 @@ class ExportDialog(ThemedDialog):
         except Exception:
             pass
 
-    def _apply_preview_pixmap(self):
+    def _preview_fill_color(self) -> QColor | None:
+        """Background painted under the preview, or ``None`` (transparent frame).
 
-        if self._preview_source_pixmap is None or self._preview_source_pixmap.isNull():
-
-            self.preview_label.clear()
-            return
-
-        target_size = self.preview_label.size()
-        if target_size.isEmpty():
-            target_size = self.preview_label.minimumSize()
-            if target_size.isEmpty():
-                target_size = QSize(
-                    export_geo.export_preview_min_width(),
-                    export_geo.export_preview_min_height(),
-                )
-
+        Filled only when the export frame has pads (a virtual canvas past 0..1)
+        and the format keeps alpha — or when the format forces an opaque frame.
+        The label's theme chrome around the KeepAspectRatio letterbox stays the
+        theme preview surface.
+        """
         fmt_current = (
             self.combo_format.currentText().upper()
             if hasattr(self, "combo_format")
@@ -681,31 +674,32 @@ class ExportDialog(ThemedDialog):
             force_fill
             or (fill_allowed and bool(self.checkbox_fill_bg.isChecked()))
         )
+        if not effective_fill:
+            return None
         bg = (
             self.current_bg_color
             if isinstance(self.current_bg_color, QColor)
             else QColor(255, 255, 255, 255)
         )
+        return QColor(bg)
 
-        scaled = self._preview_source_pixmap.scaled(
-            target_size,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
+    def _apply_preview_pixmap(self):
+        """Hand the source to the pane and bake the settled frame.
+
+        The pane stretches the source on every paint (see
+        ``preview_pane.ExportPreviewLabel``); this only refreshes the
+        keyed smooth raster for the size it currently has.
+        """
+        label = getattr(self, "preview_label", None)
+        if label is None:
+            return
+        if self._preview_source_pixmap is None or self._preview_source_pixmap.isNull():
+            label.clear_preview()
+            return
+        label.set_preview_source(
+            self._preview_source_pixmap, self._preview_fill_color()
         )
-        if effective_fill:
-            # Fill only the export frame (virtual canvas). Label chrome around
-            # the KeepAspectRatio letterbox stays the theme preview surface.
-            composed = QPixmap(scaled.size())
-            composed.fill(bg)
-            painter = QPainter(composed)
-            painter.setCompositionMode(
-                QPainter.CompositionMode.CompositionMode_SourceOver
-            )
-            painter.drawPixmap(0, 0, scaled)
-            painter.end()
-            self.preview_label.setPixmap(composed)
-        else:
-            self.preview_label.setPixmap(scaled)
+        label.bake_preview()
 
     def _pixmap_from_pil(self, pil_img: PIL.Image.Image) -> QPixmap:
         try:
