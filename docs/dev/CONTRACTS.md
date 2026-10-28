@@ -355,7 +355,7 @@ keyboard navigation into the panel
 opening — focus grab plus a registered flyout section — joins the graph.
 
 Canonical long guide (sibling private docs repo, path only):
-`improve-imgsli-internal-docs/docs/dev/KEYBOARD_NAVIGATION.md`.
+the internal notes on KEYBOARD_NAVIGATION.
 
 ## Core Events (The Notification Problem)
 

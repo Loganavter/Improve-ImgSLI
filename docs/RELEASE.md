@@ -100,7 +100,7 @@ The product name is `BlinkTable`; `Improve-ImgSLI` stays the technical identity
 (app-id, AUR `pkgname`, MIME type, `StartupWMClass`, Inno Setup identity,
 `QSettings` organization/application keys, repository, domain). Rationale and
 the exact file list: the private notes' `plan-app-branding-2026-10-21.md`
-(`../improve-imgsli-internal-docs/docs/dev/investigations/plan-app-branding-2026-10-21.md`,
+(the internal notes on plan-app-branding-2026-10-21,
 L1/L2 split).
 
 Do **not** rename the app-id or the package inside a release: it resubmits the

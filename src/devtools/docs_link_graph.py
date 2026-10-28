@@ -21,8 +21,8 @@ The script:
    this immediately instead of quietly). ``#anchor`` jumps are validated
    separately against the target file's headings (``broken_anchors``) —
    same-file ``#anchor`` links included. A link that resolves **outside** the
-   repo root names a sibling checkout (``../sli-ui-toolkit/…``,
-   ``../improve-imgsli-internal-docs/…``) that a clean clone does not contain;
+   repo root names a sibling checkout (``../sli-ui-toolkit/…`` or the private
+   knowledge plane's directory) that a clean clone does not contain;
    it is not validated, because its absence says nothing about the link.
 2. Validates backticked repo-root paths (``src/…``, ``tests/…``, ``docs/…``,
    ``scripts/…``, ``mcp-server/…``): the cited path must exist in this

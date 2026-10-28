@@ -52,7 +52,7 @@ consumers already wire to that channel open from the keyboard too
 edit mode.
 
 This is a deliberate exception to the app-wide Enter-to-edit contract
-(`improve-imgsli-internal-docs/docs/dev/KEYBOARD_NAVIGATION.md` §15): `is_editing()` always returns `False`, so
+(the internal keyboard-navigation notes, §15): `is_editing()` always returns `False`, so
 `ToolbarRowsSection` keeps handing every arrow to ring navigation. The
 keyboard value path is the wheel and `Left`/`Right` inside the `Up` pill. The
 contract registry (`tests/runtime/test_value_control_edit_contract.py`) marks

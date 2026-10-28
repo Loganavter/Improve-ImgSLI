@@ -12,8 +12,8 @@ Before any mechanism hypothesis for a bug/flicker/crash: **blast radius →
 working-sibling diff** (nearest non-broken path of the same class — highest
 yield) → grep known-bad comments → cheapest one-line discriminator → **only
 then** mechanism. Two live probes without a narrowed layer ⇒ stop. Full ladder:
-`../improve-imgsli-internal-docs/docs/dev/DEBUGGING.md`; evidence + anti-shortcut
-index: `../improve-imgsli-internal-docs/docs/dev/investigations/circling-map-2026-10-06.md`.
+the internal notes on DEBUGGING; evidence + anti-shortcut
+index: the internal notes on circling-map-2026-10-06.
 (Skill `diagnosis-ladder`.)
 You can also drive a running instance yourself instead of asking the owner to
 reproduce: the in-app control surface (MCP) inventories elements, injects
@@ -23,10 +23,10 @@ QRhi canvas, an off-screen part of the window reads black, `ui_click` is
 in-process (so it is *not* proof a control is reachable), `press_keys target=`
 is aimed rather than typed; the honest list and the keyboard-reachability pair
 (`ui_nav_state` + `nav_key`) live there and in rule 7 of
-`../improve-imgsli-internal-docs/docs/dev/DEBUGGING.md`. To stand the whole thing
+the internal notes on DEBUGGING. To stand the whole thing
 up on a virtual display (private Xvfb, isolated `XDG_*`, RHI-is-live proof,
 capture-artifact checklist) follow
-`../improve-imgsli-internal-docs/docs/dev/RUNBOOK_LIVE_MCP_VERIFICATION.md`.
+the internal notes on RUNBOOK_LIVE_MCP_VERIFICATION.
 
 ---
 
@@ -63,7 +63,7 @@ Local-only dirs (gitignored, not in repo): `.cursor/` (except committed `.cursor
 | Help authoring | [docs/dev/HELP_SYSTEM.md](docs/dev/HELP_SYSTEM.md) |
 | Screenshot a surface / Help figures | [docs/dev/SCREENSHOTS.md](docs/dev/SCREENSHOTS.md) |
 | “Weird after click/zoom” | [docs/dev/TRACING.md](docs/dev/TRACING.md) |
-| Known Qt quirks | `../improve-imgsli-internal-docs/docs/dev/KNOWN_BUGS.md` (private sibling repo, not in this checkout) |
+| Known Qt quirks | the internal notes on KNOWN_BUGS (private sibling repo, not in this checkout) |
 | Drive/inspect the app from an LLM agent (MCP tools/resources/prompts) | [docs/dev/MCP.md](docs/dev/MCP.md) |
 | Open engineering debt | [docs/dev/TODO.md](docs/dev/TODO.md) |
 | Code mass / where the code is heavy, reduction plan | [docs/dev/CODE_MASS_REDUCTION.md](docs/dev/CODE_MASS_REDUCTION.md) |
