@@ -14,7 +14,7 @@ knob                image_compare (IC)               multi_compare (MC)
 LOD settle window   settle, LOD_FETCH_SETTLE_MS=100   immediate (no window)
 GPU tile budget     2 GiB                            512 MiB
 host texture cache  3 GiB (engine default)           512 MiB
-texture-array cap   2032 layers                      508 layers
+texture-array cap   867 layers                       508 layers
 first-paint hold    atomic hold (coverage.py)        none
 coarsest-LOD pin    pin_coarsest_level(...)          none   <- LIVE DRIFT
 ==================  ===============================  =========================
@@ -165,6 +165,12 @@ _BINOPS = {
     ast.Pow: lambda a, b: a ** b,
 }
 
+#: Pure engine helpers a capacity expression may call (module, attribute).
+_PURE_CALLABLES = {
+    "plan_array_capacity": ("engine.gpu.array_budget", "plan_array_capacity"),
+    "array_layer_px": ("engine.gpu.array_draw", "array_layer_px"),
+}
+
 
 def _node_value(node, module: str, seen: tuple):
     if isinstance(node, ast.Constant):
@@ -186,6 +192,27 @@ def _node_value(node, module: str, seen: tuple):
         if node.func.id in ("min", "max") and node.args:
             values = [_node_value(arg, module, seen) for arg in node.args]
             return min(values) if node.func.id == "min" else max(values)
+        # The capacity matrix gate evaluates each surface's real expression, so
+        # the engine helpers those expressions call must be callable here
+        # (2026-10-28: the per-tab capacity formula moved into
+        # engine.gpu.array_budget, and it is sized from the shared
+        # array_layer_px()).
+        target = _PURE_CALLABLES.get(node.func.id)
+        if target is not None:
+            import importlib
+
+            callable_ = getattr(importlib.import_module(target[0]), target[1])
+            args = [_node_value(arg, module, seen) for arg in node.args]
+            kwargs = {}
+            for keyword in node.keywords:
+                if keyword.arg is None:
+                    raise _Unresolved(
+                        f"**kwargs in {module}: {ast.unparse(node)!r}"
+                    )
+                kwargs[keyword.arg] = _node_value(
+                    keyword.value, module, seen
+                )
+            return callable_(*args, **kwargs)
     raise _Unresolved(f"unsupported expression in {module}: {ast.unparse(node)!r}")
 
 
@@ -499,35 +526,37 @@ def test_host_texture_cache_budget_matrix():
 
 
 def test_texture_array_capacity_matrix():
-    """IC pre-sizes 2032 array layers; MC pre-sizes 508.
+    """IC pre-sizes 867 array layers; MC pre-sizes 508.
 
     Both policies take ``array_capacity=_ARRAY_CAPACITY`` from their own module,
-    and both capacities are DERIVED there, not literals::
+    and both capacities come from the engine's planner, not a tab-local
+    expression (2026-10-28: a flat budget-sized array asked for 2032 layers /
+    ~2.9 GB and integrated GPUs refused the allocation silently)::
 
-        _ARRAY_CAPACITY = min(
-            DEFAULT_MAX_ARRAY_SIZE,                      # 2048 backend layer cap
-            max(tiles_per_axis ** 2 * image_multiplier,   # visible-tile floor
-                budget_bytes // _ARRAY_LAYER_BYTES),      # byte-budget fit
-        )
+        plan_array_capacity(
+            layer_px=_ARRAY_LAYER_PX,
+            demand_layers=tiles_per_axis ** 2 * multiplier,  # visible floor
+            max_array_bytes=512 MiB,                         # per-array cap
+            hard_max=DEFAULT_MAX_ARRAY_SIZE,                 # 2048 layers
+        ) == min(2048, max(demand_layers, 512 MiB // layer_bytes))
 
     IC (resources.py) multiplies the visible floor by 3 (image1 + image2 +
-    diff) and divides its 2 GiB budget; MC (base_images.py) has no cross-image
-    pairing (multiplier 1) and divides its 512 MiB slot budget. Both share
-    ``_ARRAY_LAYER_BYTES = (LIVE_TILE_EXTENT + 2*TILE_APRON_PX)**2 * 4``
-    (514*514*4 = 1_056_784 bytes), ``DEFAULT_MAX_ARRAY_SIZE = 2048`` and
-    ``_MAX_EXPECTED_CANVAS_PX = 4096``.
+    diff); MC (base_images.py) has no cross-image pairing (multiplier 1). Both
+    share `_ARRAY_LAYER_PX = (LIVE_TILE_EXTENT + 2*TILE_APRON_PX)` (514 px,
+    1_056_784 bytes/layer) and `_MAX_EXPECTED_CANVAS_PX = 4096`.
 
-    This test asserts the integer each expression actually evaluates to, so a
-    changed budget, tile size, apron or canvas bound fails here.
+    The numbers below are the ones those expressions evaluate to, so a changed
+    budget, tile size, apron or canvas bound fails here.
     """
     ic_policy = policy_fields(IC_POLICY_SITE)
     mc_policy = policy_fields(MC_POLICY_SITE)
     ic_capacity = ic_policy["array_capacity"]
     mc_capacity = mc_policy["array_capacity"]
 
-    assert ic_capacity == 2032 and mc_capacity == 508, (
+    assert ic_capacity == 867 and mc_capacity == 508, (
         f"texture-array capacity matrix drifted: IC policy {ic_capacity!r} "
-        f"(expected 2032: 2 GiB // 1_056_784), MC policy {mc_capacity!r} "
+        f"(expected 867: 3 * 17^2 visible-tile floor beats the 508-layer / "
+        f"512 MiB cap), MC policy {mc_capacity!r} "
         f"(expected 508: 512 MiB // 1_056_784)"
     )
     assert ic_capacity == _const(IC_RESOURCES, "_ARRAY_CAPACITY"), (

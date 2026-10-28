@@ -78,10 +78,8 @@ from engine.cache.tile_constants import (
 )
 from engine.cache.tile_geometry import _TILE_APRON_PX
 from engine.cache.tile_policy import TilePolicy
-from engine.cache.tile_texture_service import (
-    DEFAULT_MAX_ARRAY_SIZE,
-    TileTextureService,
-)
+from engine.cache.tile_texture_service import TileTextureService
+from engine.gpu.array_budget import plan_array_capacity
 from engine.gpu.array_draw import (
     SLOT_INSTANCE_ATTRIBUTES,
     SLOT_INSTANCE_STRIDE,
@@ -108,7 +106,10 @@ TileIndex = tuple[int, int]
 #: uploaded 1:1 into (see ``array_layer_px``). One array for one source.
 _LIVE_TILE_EXTENT = LIVE_TILE_EXTENT
 _ARRAY_LAYER_PX = array_layer_px(_LIVE_TILE_EXTENT, _TILE_APRON_PX)
-_ARRAY_CAPACITY = DEFAULT_MAX_ARRAY_SIZE
+#: Engine policy (engine.gpu.array_budget), not the backend layer cap: one
+#: array is one allocation, so its layer count is bounded by bytes the GPU can
+#: actually back. This view has a single source per array, so no demand floor.
+_ARRAY_CAPACITY = plan_array_capacity(layer_px=_ARRAY_LAYER_PX)
 
 #: GPU tile byte budget for the shared eviction pass (mirrors the compare
 #: tabs; at 512px tiles even a worst-case multi-ring working set stays well
@@ -123,7 +124,7 @@ _TILE_CACHE_BUDGET_BYTES = 2 * 1024 * 1024 * 1024
 #: engine view has always drawn its current (possibly partial) tiles over the
 #: held level instead of flipping whole tiers. The host-cache number is the
 #: engine default the view would inherit if it ever cached host QImages (it
-#: keeps none itself); the array capacity is the backend layer cap.
+#: keeps none itself); the array capacity is the engine's per-array budget.
 TILE_POLICY = TilePolicy(
     lod_mode="settle",
     settle_ms=None,
@@ -556,6 +557,7 @@ class SingleImageTiledView:
             max_tile_extent=_LIVE_TILE_EXTENT,
             max_array_size=_ARRAY_CAPACITY,
         )
+        self.resources.set_capacity_sink(service.set_max_array_size)
         self._level_keys = {}
         self._level_stores = {}
         self._key_levels = {}

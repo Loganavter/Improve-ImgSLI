@@ -153,6 +153,7 @@ class RhiCanvasRenderer:
         # Same capacity the pool sizes its SRB-bound array from: the service
         # must never hand out a layer `tile_arrays[0]` cannot address.
         self.tile_service = TileTextureService(max_array_size=_ARRAY_CAPACITY)
+        self._wire_array_capacity()
         self.feature_passes: list[object] = []
         # Set only after every feature pass initialized successfully (see
         # initialize()). Gates the same-rhi early return on *completed* init,
@@ -222,6 +223,19 @@ class RhiCanvasRenderer:
         # frames (reset in render()). Pilot writers record additively.
         self.frame_context = FrameContext()
 
+    def _wire_array_capacity(self) -> None:
+        """Let the GPU owner lower the slot allocator's cap when the driver
+        refuses the planned array size (engine.gpu.array_budget).
+
+        The array SRB binds ``tile_arrays[0]`` only, so an allocator that kept
+        the planned capacity after a shrink would hand out layers the created
+        texture cannot address -- the drift ``tests/contracts/
+        test_capacity_agreement.py`` guards against.
+        """
+        self.resources.array_resources.set_capacity_sink(
+            self.tile_service.set_max_array_size
+        )
+
     # -- backward-compatible views onto RhiResources' GPU state, used by
     # feature passes (e.g. magnifier) that read tile textures directly. --
     @property
@@ -259,6 +273,7 @@ class RhiCanvasRenderer:
             max_tile_extent=min(_LIVE_TILE_EXTENT, query_max_texture_size(self.rhi)),
             max_array_size=_ARRAY_CAPACITY,
         )
+        self._wire_array_capacity()
         self.resources.initialize(self.rhi, widget, command_buffer)
         self.glass_panel_renderer.initialize(self.rhi)
 

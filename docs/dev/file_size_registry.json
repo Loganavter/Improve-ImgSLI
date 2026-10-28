@@ -190,6 +190,17 @@
       }
     },
     {
+      "path": "src/engine/gpu/array_resources.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=state-machine size=exempt reason=\"one tile-array GPU-resource lifecycle (create/verify/shrink/upload/SRB cache); the allocation-verification half shares the capacity field with the upload guard, so splitting it out would duplicate the state the 2026-10-28 black-canvas fix exists to keep single\"",
+      "parsed": {
+        "pattern": "state-machine",
+        "size": "exempt",
+        "reason": "one tile-array GPU-resource lifecycle (create/verify/shrink/upload/SRB cache); the allocation-verification half shares the capacity field with the upload guard, so splitting it out would duplicate the state the 2026-10-28 black-canvas fix exists to keep single"
+      }
+    },
+    {
       "path": "src/engine/gpu/glass_panel.py",
       "limit": 500,
       "marker": "Audit-Meta:",
