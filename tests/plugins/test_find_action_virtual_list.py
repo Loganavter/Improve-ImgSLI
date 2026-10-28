@@ -16,6 +16,7 @@ Red-before: on the previous tree the dialog materialized every action, so
 from __future__ import annotations
 
 import pytest
+from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QApplication
 
 from core.actions.types import ActionDescriptor
@@ -99,6 +100,26 @@ def test_moving_the_selection_materializes_its_row(qtbot, catalog):
             "arrow-key selection must materialize the row it lands on"
         )
         assert dialog._actions[dialog._current_index].action_id == "probe.virtual.200"
+    finally:
+        dialog.close()
+        dialog.deleteLater()
+
+
+def test_first_rows_are_visible_inside_the_viewport(qtbot, catalog):
+    """The windowed list must actually show its rows (owner screenshot: blank)."""
+    dialog = _open(qtbot)
+    try:
+        assert dialog._rows, "no rows materialized"
+        viewport = dialog._scroll.viewport()
+        first = dialog._rows[0]
+        assert first.isVisible(), "the first row is hidden"
+        offset = first.mapTo(viewport, QPoint(0, 0)).y()
+        assert 0 <= offset < viewport.height(), (
+            f"the first row sits at y={offset} in a {viewport.height()}px "
+            "viewport - the spacers must stay outside the row band"
+        )
+        second = dialog._rows[1]
+        assert second.mapTo(viewport, QPoint(0, 0)).y() > offset
     finally:
         dialog.close()
         dialog.deleteLater()

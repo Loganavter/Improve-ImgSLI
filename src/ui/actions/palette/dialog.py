@@ -517,8 +517,11 @@ class FindActionDialog(ThemedDialog):
                 row.learnMoreRequested.connect(self._learn_more_action_id)
                 self._rows_by_id[action.action_id] = row
             materialized.append(row)
-            # Order: [top spacer][rows...][bottom spacer][stretch]
-            self._list_layout.insertWidget(index + 2, row)
+            # Order: [top spacer][rows...][bottom spacer][stretch] - the row goes
+            # BETWEEN the spacers, right after the previous one. Inserting it
+            # after the bottom spacer (index+2) put the whole unmaterialized
+            # remainder above the visible rows and the list read as empty.
+            self._list_layout.insertWidget(index + 1, row)
             row.setVisible(True)
 
         window_ids = set(id(row) for row in materialized)
@@ -526,6 +529,8 @@ class FindActionDialog(ThemedDialog):
             if id(row) not in window_ids and _is_valid(row):
                 row.setVisible(False)
         self._rows = materialized
+        # Keep the bottom spacer last (before the stretch) after the inserts.
+        self._list_layout.insertWidget(len(materialized) + 1, self._bottom_spacer)
         self._top_spacer.setFixedHeight(start * pitch)
         self._bottom_spacer.setFixedHeight((total - start - capacity) * pitch)
         # Keep the cache bounded on very large catalogs: rows outside the window
