@@ -420,7 +420,7 @@ def _gallery_activity_overlay(painter, ctx) -> None:  # type: ignore[no-untyped-
     rect = getattr(ctx, "rect", None)
     if widget is None or rect is None:
         return
-    # Cover box, design px resolved at USE time (see ui/card.py GALLERY_COVER_*).
+    # Cover box, design px resolved at USE time (see ui/card/factory.py GALLERY_COVER_*).
     inset = float(scaled_px(8))
     from tabs.image_gallery.ui.card import GALLERY_COVER_H
 

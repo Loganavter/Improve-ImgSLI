@@ -187,7 +187,7 @@ def _text_rows(
         rows.append(err_row)
     # Metric-axis dots share the filename line (real_design.md:2.4): the
     # overlay painter draws them right-aligned, this empty row only reserves
-    # the line height (colors/values are computed by ``ui/card.py``).
+    # the line height (colors/values are computed by ``ui/card/factory.py``).
     rows.append(
         ButtonRow(
             text="",

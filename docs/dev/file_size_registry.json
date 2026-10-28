@@ -988,7 +988,7 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/card.py",
+      "path": "src/tabs/image_gallery/ui/card/factory.py",
       "limit": 500,
       "marker": "Audit-Meta:",
       "raw": "pattern=thin-owner-target size=exempt reason=\"one card factory concern — build + pooled rebind share the region/row/badge layout contract; bodies live in ui/card/*\"",
@@ -1098,16 +1098,6 @@
       }
     },
     {
-      "path": "src/tabs/image_gallery/ui/quick_look.py",
-      "limit": 500,
-      "marker": "Audit-Meta:",
-      "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip\"",
-      "parsed": {
-        "pattern": "thin-owner",
-        "reason": "thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip"
-      }
-    },
-    {
       "path": "src/tabs/image_gallery/ui/quick_look/metrics/rows.py",
       "limit": 500,
       "marker": "Audit-Meta:",
@@ -1126,6 +1116,16 @@
       "parsed": {
         "pattern": "state-machine",
         "reason": "one navigation section for one panel: row model, ownership (including the overlay container), header/strip crossing, focus restore across strip rebuilds and the modality rules share a single section state; splitting the crossing helpers out would fork how focus is placed"
+      }
+    },
+    {
+      "path": "src/tabs/image_gallery/ui/quick_look/overlay.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=thin-owner reason=\"thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip\"",
+      "parsed": {
+        "pattern": "thin-owner",
+        "reason": "thin owner delegating to ui/quick_look/* helpers,bars,histograms,metrics,artifacts,strip"
       }
     },
     {

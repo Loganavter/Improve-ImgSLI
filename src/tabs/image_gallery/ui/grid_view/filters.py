@@ -106,7 +106,7 @@ class _CardKeyFilter(QObject):
     the toolkit ``Button``'s own ``keyPressEvent``, which would otherwise
     treat Space/Return as an activation click — Space must stay
     "remove from view" for the gallery, so it is routed back to the owner
-    widget's triage handler instead (``ui/card.py`` card vs ``triage_ui``).
+    widget's triage handler instead (``ui/card/factory.py`` card vs ``triage_ui``).
 
     Pool-safe: parented to *card* (Qt keeps it alive), idempotently marked by
     ``GalleryGridView._ensure_card_keys``.

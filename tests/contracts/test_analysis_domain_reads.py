@@ -76,11 +76,11 @@ DOMAIN_READ_ALLOWLIST: dict[str, str] = {
         "and four POSTs after a live switch). It REPLACES the per-site ad-hoc "
         "gates above, so it is removed by the same W5 policy slice, not before."
     ),
-    "src/tabs/image_gallery/ui/card.py|domain = getattr(owner, \"_judgment_domain\", None)": (
+    "src/tabs/image_gallery/ui/card/factory.py|domain = getattr(owner, \"_judgment_domain\", None)": (
         "card picks an artifact severity by domain — W5/P9 renders the AxisValue's "
         "own provenance instead (AxisReader / per-axis provenance)"
     ),
-    "src/tabs/image_gallery/ui/card.py|_domain = getattr(owner, \"_judgment_domain\", None)": (
+    "src/tabs/image_gallery/ui/card/factory.py|_domain = getattr(owner, \"_judgment_domain\", None)": (
         "same card surface, second call site — W5/P9 (AxisReader) removes it with "
         "its sibling above"
     ),

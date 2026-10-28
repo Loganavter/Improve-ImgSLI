@@ -16,7 +16,7 @@ Falsification (pre-fix) — each assertion below fails on the parent commit:
   silently fell back to English.
 * ``ui/card/visuals.py`` emitted ``"defects: " + …`` (its ``verdict.upper()``
   pill was deleted later, plan-gallery-ai-judgement P4/D4);
-  ``ui/card.py`` + ``ui/list/card.py`` emitted ``f"VLM tie-break: {vlm_err}"``;
+  ``ui/card/factory.py`` + ``ui/list/card.py`` emitted ``f"VLM tie-break: {vlm_err}"``;
   ``ui/quick_look/metrics/rows.py`` emitted ``"— · not measured"`` /
   ``"#{rank} of {total}"`` / ``"rejected tail ≤ …"``; ``ui/quick_look/meta.py``
   emitted the whole ``local_brief_fallback`` English prose plus ``"AI brief…"``;
@@ -131,7 +131,7 @@ _PRE_FIX_FORMS: dict[str, tuple[str, ...]] = {
     "ui/card/visuals.py": (
         'out.append("defects: " + ", ".join(kinds))',
     ),
-    "ui/card.py": (
+    "ui/card/factory.py": (
         'parts.append(f"VLM tie-break: {vlm_err}")',
     ),
     "ui/list/card.py": (

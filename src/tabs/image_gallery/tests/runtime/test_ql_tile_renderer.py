@@ -125,12 +125,32 @@ class _FakeResources:
         self.pipeline_targets: list = []
         self.capacities: list = []
         self.uploaded: list = []
+        #: The slot allocator that must follow a shrunk capacity, registered by
+        #: ``SingleImageTiledView`` (``array_resources.set_capacity_sink``).
+        self.capacity_sink = None
 
     def ensure_array_pipeline(self, target) -> None:
         self.pipeline_targets.append(target)
 
+    def set_capacity_sink(self, sink) -> None:
+        self.capacity_sink = sink
+
     def ensure_array_instance_capacity(self, count) -> None:
         self.capacities.append(count)
+        self._adopt(count)
+
+    def _adopt(self, count) -> None:
+        """Publish the verified capacity and let the allocator follow it.
+
+        The real ``TileArrayResourcesBase._adopt_capacity`` does exactly this
+        when the driver refuses a larger array; this double grants what was
+        asked, so the sink must see the same number. Without the seam the view
+        raised ``AttributeError`` on construction and fourteen Quick-Look tile
+        tests went red on ``main`` after #767 — the engine grew the call, the
+        double did not.
+        """
+        if self.capacity_sink is not None:
+            self.capacity_sink(count)
 
     def ensure_array_srb(self, sampler_name):
         return "srb"

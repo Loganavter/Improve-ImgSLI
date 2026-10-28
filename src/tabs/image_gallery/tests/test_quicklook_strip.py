@@ -810,7 +810,7 @@ def test_ungrouped_items_form_strip_group(qtbot):
 def test_strip_thumb_rightclick_opens_shared_menu(qtbot, tmp_path, monkeypatch):
     """Real right-click on a NON-viewing thumb pops the shared card menu.
 
-    Same helper as the grid cards (ui/card.py); the target is the thumb's
+    Same helper as the grid cards (ui/card/factory.py); the target is the thumb's
     own item path, not the currently viewing one.
     """
     from PySide6.QtCore import Qt as _Qt

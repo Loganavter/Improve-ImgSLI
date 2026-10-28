@@ -272,7 +272,7 @@ def rebuild_strip(overlay) -> None:
         except Exception:
             pass
         # Context menu: the same ``rightClicked`` signal the grid cards use
-        # (ui/card.py ``_bind_gallery_card``) — one proven path, no filter
+        # (ui/card/factory.py ``_bind_gallery_card``) — one proven path, no filter
         # release-time branch. See ``open_strip_thumb_menu``.
         try:
             btn.rightClicked.connect(lambda _b=btn: open_strip_thumb_menu(overlay, _b))
@@ -444,7 +444,7 @@ def rebuild_strip(overlay) -> None:
             return _do
 
         _switch = _make_switch()
-        # Card wiring pattern (ui/card.py::_bind_gallery_card): region
+        # Card wiring pattern (ui/card/factory.py::_bind_gallery_card): region
         # clicks emit regionClicked while clicked fires ONLY for region
         # _main. The strip thumb region id is "thumb", so clicked alone
         # never switched — connect both; exactly one fires per click.

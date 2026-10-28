@@ -7,7 +7,7 @@ Owner report 2026-10-19 (plan-live-appearance-fixes-2026-10-19): at UI scale
 card read smaller than the surrounding chrome. The series header is fine.
 
 Root cause (measured, not assumed — see the measurement table in the lane's
-DONE.md): the card's ``CustomSplit`` rect fns (``ui/card.py``) returned RAW
+DONE.md): the card's ``CustomSplit`` rect fns (``ui/card/factory.py``) returned RAW
 design-px literals (``QRectF(8, 8, 234, 110)`` / ``QRectF(0, 118, w, 52)``)
 while ``rect_fns`` receive the card's ACTUAL rect — so the cover/text boxes
 never followed the factor. The nearest WORKING sibling is the list row

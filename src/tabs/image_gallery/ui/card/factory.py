@@ -9,10 +9,6 @@ Audit-Meta: pattern=thin-owner-target size=exempt reason="one card factory conce
 
 from __future__ import annotations
 
-from pathlib import Path as _Path
-
-__path__ = [str(_Path(__file__).with_suffix(""))]  # type: ignore[attr-defined]
-
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 

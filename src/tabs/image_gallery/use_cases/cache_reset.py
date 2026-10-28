@@ -269,7 +269,7 @@ def _refresh_cleared_view(owner, targets) -> None:
     """Re-stamp the cleared items unranked and repaint their cards.
 
     The dots and the ★ BEST pill are stamped ON the card at build/update time
-    (``ui/card.py``), so mutating the items alone leaves the painted view
+    (``ui/card/factory.py``), so mutating the items alone leaves the painted view
     showing the old colours until some unrelated event repaints it. Two
     existing seams, no new render pipeline: the single badge-stamp point
     (``stamp_badges``, ``show_rank=False`` — the ranking is not final after a

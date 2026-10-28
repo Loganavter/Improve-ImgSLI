@@ -63,6 +63,28 @@ def jxl_probe():
     return _fixture_path()
 
 
+def _host_can_decode_jxl_without_the_codec() -> bool:
+    """Whether THIS host decodes the probe with ``imagecodecs`` DISABLED.
+
+    That is the profile every assertion below runs in (``_no_codec_profile``
+    pins ``JXL_SUPPORTED = False``), so the only decoder left is a libvips build
+    with libjxl — the profile this suite was written on.
+
+    Measured 2026-10-28 on a host whose pyvips 3.1.1 has NO JPEG-XL loader
+    (``Image.new_from_file``: "unable to load from file"): there the codec-less
+    profile cannot decode anything, two tests stayed red on ``main``, and a red
+    tier hides real regressions. A test that claims "triage measures JXL instead
+    of scoring zero" is provable only where something can decode it, so this
+    asks the app's own capability probe rather than assuming one.
+    """
+    try:
+        from shared.image_processing import progressive_loader
+
+        return progressive_loader.pyvips_can_stream(_fixture_path())
+    except Exception:
+        return False
+
+
 @pytest.fixture
 def png_probe(tmp_path):
     """Same picture, Pillow-native: the regression side of every check."""
@@ -176,7 +198,12 @@ def test_properties_report_jxl_without_read_error(jxl_probe, monkeypatch):
     assert info["format"] == "JXL"
     assert info["dimensions"] == FIXTURE_DIMS
     # Mode comes from a real decode (header band count here), never assumed.
-    assert info.get("mode") in ("L", "LA", "RGB", "RGBA")
+    if _host_can_decode_jxl_without_the_codec():
+        assert info.get("mode") in ("L", "LA", "RGB", "RGBA")
+    else:
+        # No decoder on this host: the honest answer is NO row, never a guess
+        # (the panel renders an absent key as no row — see the service docstring).
+        assert "mode" not in info
     # Exotic metadata was never read, so the keys are ABSENT, not invented.
     for absent in ("dpi", "color_profile", "exif"):
         assert absent not in info
@@ -223,6 +250,11 @@ def test_properties_unreadable_accepted_file_keeps_the_error(tmp_path, monkeypat
 # -- 3. triage -------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    not _host_can_decode_jxl_without_the_codec(),
+    reason="this host has no JPEG-XL decoder (libvips without libjxl, imagecodecs without JXL) — "
+    "measurement cannot be proven here",
+)
 def test_triage_measures_jxl_instead_of_scoring_zero(jxl_probe, monkeypatch):
     """phash / embedding / sharpness describe real pixels, not the sentinel."""
     _no_codec_profile(monkeypatch)

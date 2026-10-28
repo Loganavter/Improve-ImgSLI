@@ -10,7 +10,7 @@ Two phases, ONE decision (``ui/card/dots.metric_dots_for_item``):
   counts exactly its real metrics and each landing axis adds one.
 
 The grid card and the list row both read that one function's ``(colors, infos)``
-(``ui/card.py`` / ``ui/list/card.py``), and the painters only place them — the
+(``ui/card/factory.py`` / ``ui/list/card.py``), and the painters only place them — the
 pending rule must not be re-derived per surface.
 """
 

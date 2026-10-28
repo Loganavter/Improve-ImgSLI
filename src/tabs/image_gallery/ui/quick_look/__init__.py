@@ -1,74 +1,32 @@
-"""Quick look ui package — thin owner re-export (file+package co-exist).
+"""Quick look package — the overlay class plus its helpers/bars/histograms.
 
-Python prefers the package directory over the sibling ``quick_look.py`` file,
-so this ``__init__`` loads the file module via importlib and re-exports its
-public symbols. This keeps ``from tabs.image_gallery.ui.quick_look import
-QuickLookOverlay`` working while ``tabs.image_gallery.ui.quick_look.helpers``
-remains a real subpackage. No QSS, painter pipeline only.
+The overlay lives in ``overlay.py`` and is imported NORMALLY (a static relative
+import). It used to be a sibling ``ui/quick_look.py`` loaded through
+``importlib.util.spec_from_file_location`` — a dynamic load a frozen build cannot
+follow, wrapped in ``except Exception: pass``, so a packaged Windows build got an
+EMPTY package and the gallery page could not be created (owner log 2026-10-28:
+``cannot import name 'GALLERY_CARD_H'`` was the card package, the same proxy
+shape; this one would have failed next). One module, one import mechanism.
+
+Submodules (``helpers``, ``bars``, ``histograms``, ``artifacts``, ``insets``,
+``labels_theme``, ``meta``, ``focus_restore``, ``headers``, ``nav_section``) stay
+real submodules of this package.
 """
+
 from __future__ import annotations
 
-import importlib.util
-import pathlib as _ql_p
-import sys as _ql_sys
+from . import overlay as _overlay
+from .overlay import *  # noqa: F403 — the overlay's public surface
+from .overlay import DIM_VEIL_ALPHA, QuickLookOverlay  # the names every caller uses
 
-try:
-    _file_path = _ql_p.Path(__file__).parent.parent / "quick_look.py"
-    if _file_path.is_file():
-        _spec = importlib.util.spec_from_file_location("tabs.image_gallery.ui._quick_look_file", str(_file_path))
-        if _spec and _spec.loader:
-            _mod = importlib.util.module_from_spec(_spec)
-            # Ensure __path__ trick inside the file still sees subpackage
-            _sys_mod = _ql_sys.modules.get("tabs.image_gallery.ui.quick_look")
-            # Temporarily place file module under alias to avoid recursion
-            _ql_sys.modules["tabs.image_gallery.ui._quick_look_file"] = _mod
-            _spec.loader.exec_module(_mod)  # type: ignore[union-attr]
-            # Re-export public symbols for ``from tabs.image_gallery.ui.quick_look import X``
-            for _name in (
-                "QuickLookOverlay",
-                "DIM_VEIL_ALPHA",
-                "_BarWidget",
-                "_DualRestoredInventedBar",
-                "_BandingCombHistogram",
-                "_GenericHistogram",
-                "_HistogramStub",
-                "_thumb_pixmap",
-                "_theme_color",
-                "_token_color",
-                "_set_colored_text",
-                "_source_dimensions",
-                # helpers split homes (not on the file module — fallback below)
-                "build_overlay_ui",
-                "populate_preview",
-                "populate_source_inset",
-                "populate_filename_meta",
-                "populate_report_header",
-                "series_size_note",
-                "populate_brief",
-                "reposition_nav_buttons",
-                "reposition_grip",
-            ):
-                if hasattr(_mod, _name):
-                    globals()[_name] = getattr(_mod, _name)
-                else:
-                    # Concern-module home (helpers.py is a thin re-export
-                    # shim since the grab-bag split) — best effort, never fatal.
-                    try:
-                        from tabs.image_gallery.ui.quick_look import helpers as _ql_helpers
 
-                        if hasattr(_ql_helpers, _name):
-                            globals()[_name] = getattr(_ql_helpers, _name)
-                    except Exception:
-                        pass
-            # Also keep file module accessible if someone imported it directly
-            _ql_sys.modules["tabs.image_gallery.ui.quick_look"] = _ql_sys.modules[__name__]
-            # Preserve subpackage path for helpers etc.
-            try:
-                _file_mod = _mod
-                if hasattr(_file_mod, "__path__"):
-                    # Merge file's __path__ (points to quick_look dir) already equals package __path__
-                    pass
-            except Exception:
-                pass
-except Exception:
-    pass
+def __getattr__(name: str):
+    """Answer any other name the old proxy used to copy (helpers, privates)."""
+    return getattr(_overlay, name)
+
+
+def __dir__() -> list[str]:
+    return sorted(set(dir(_overlay)) | set(globals()))
+
+
+__all__ = ["QuickLookOverlay", "DIM_VEIL_ALPHA"]

@@ -1,54 +1,21 @@
-from typing import TYPE_CHECKING
+"""Placeholder ``RatingGestureTransaction`` the app configures into the toolkit.
 
-if TYPE_CHECKING:
-    pass
+This module used to try an ``importlib.import_module("ui.gesture_resolver")`` and
+then fall back to loading ``src/ui/gesture_resolver.py`` **by file path**, all
+inside ``try/except`` blocks that swallowed every failure. There is no such
+module (the resolver that exists is ``ui.canvas_infra.scene.gesture_resolver``,
+which has no ``RatingGestureTransaction``), so the fallback could never succeed —
+it only did a filesystem probe on every import, mutated ``sys.path``, and carried
+a *path-based* load that a frozen build cannot follow (the same class of defect
+that made the packaged Windows gallery unopenable, owner log 2026-10-28).
+
+What the app has always used is the no-argument class below: the toolkit stores
+it as ``rating_gesture_factory`` and never calls it. If a real transaction is
+ever implemented, import it statically here.
+"""
+
+from __future__ import annotations
+
 
 class RatingGestureTransaction:
-
-    pass
-
-try:
-    import sys
-    from pathlib import Path
-
-    current_file = Path(__file__).resolve()
-
-    src_path = current_file.parent.parent.parent
-    gesture_resolver_path = src_path / "ui" / "gesture_resolver.py"
-
-    if gesture_resolver_path.exists():
-
-        src_path_str = str(src_path)
-        if src_path_str not in sys.path:
-            sys.path.insert(0, src_path_str)
-
-        try:
-
-            import importlib
-
-            ui_gesture_resolver = importlib.import_module("ui.gesture_resolver")
-            RatingGestureTransaction = getattr(  # type: ignore[misc]  # runtime import fallback
-                ui_gesture_resolver,
-                "RatingGestureTransaction",
-                RatingGestureTransaction,
-            )
-        except (ImportError, AttributeError):
-
-            try:
-                import importlib.util
-
-                spec = importlib.util.spec_from_file_location(
-                    "ui.gesture_resolver", gesture_resolver_path
-                )
-                if spec and spec.loader:
-                    gesture_resolver_module = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(gesture_resolver_module)
-                    RatingGestureTransaction = getattr(  # type: ignore[misc]  # runtime import fallback
-                        gesture_resolver_module,
-                        "RatingGestureTransaction",
-                        RatingGestureTransaction,
-                    )
-            except Exception:
-                pass
-except Exception:
-    pass
+    """No-op transaction placeholder (the toolkit only stores the factory)."""

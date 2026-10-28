@@ -5,7 +5,7 @@ Package split of the former ``ui/card/context_menu.py`` per
 every name is re-exported here so ``from tabs.image_gallery.ui.card.context_menu
 import X`` and ``import tabs.image_gallery.ui.card.context_menu as cm`` keep
 working — notably ``popup_gallery_card_context_menu`` (also lazy re-exported by
-``ui/card.py`` and imported by ``ui/card/__init__.py``).
+``ui/card/factory.py`` and re-exported by ``ui/card/__init__.py``).
 
 Submodules by concern:
 
