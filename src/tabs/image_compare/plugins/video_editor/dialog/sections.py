@@ -21,6 +21,12 @@ from tabs.image_compare.plugins.video_editor.dialog.surface_widgets import (
 from tabs.image_compare.plugins.video_editor.dialog.tab_cursor import (
     VideoEditorTopTabHost,
 )
+from tabs.image_compare.plugins.video_editor.layout_geometry import (
+    MIN_VIDEO_EDITOR_TIMELINE_HEIGHT_PX,
+    VIDEO_EDITOR_SETTINGS_STATIC_MARGINS_PX,
+    VIDEO_EDITOR_SETTINGS_STATIC_SPACING_PX,
+    VIDEO_EDITOR_TOOLBAR_HEIGHT_PX,
+)
 from tabs.image_compare.plugins.video_editor.services.export_config import ExportConfigBuilder
 from tabs.image_compare.plugins.video_editor.widgets.timeline import VideoTimelineWidget
 from sli_ui_toolkit.managers import scaled_px
@@ -128,8 +134,19 @@ def build_settings_panel(dialog):
 
     static_container = ThemedBackgroundContainer(settings_panel)
     static_layout = QVBoxLayout(static_container)
-    static_layout.setContentsMargins(scaled_px(12), scaled_px(12), scaled_px(12), scaled_px(10))
-    static_layout.setSpacing(scaled_px(14))
+    _static_left, _static_top, _static_right, _static_bottom = (
+        VIDEO_EDITOR_SETTINGS_STATIC_MARGINS_PX
+    )
+    static_layout.setContentsMargins(
+        scaled_px(_static_left),
+        scaled_px(_static_top),
+        scaled_px(_static_right),
+        scaled_px(_static_bottom),
+    )
+    static_layout.setSpacing(scaled_px(VIDEO_EDITOR_SETTINGS_STATIC_SPACING_PX))
+    # Owned layout, not just the container: the fit-to-screen pass switches
+    # this block to the compact density on short screens (layout_geometry).
+    dialog.settings_static_layout = static_layout
     # Each form row is wrapped in a plain container so the keyboard-nav
     # section can treat it as one row (nav rows must be QWidgets — a bare
     # QHBoxLayout has no isVisible()/isAncestorOf identity). Zero-margin
@@ -778,7 +795,7 @@ def create_quality_stack(dialog):
 def create_toolbar(dialog):
     toolbar_frame = VideoEditorToolbar()
     toolbar_frame.setObjectName("VideoEditorToolbar")
-    toolbar_frame.setFixedHeight(scaled_px(50))
+    toolbar_frame.setFixedHeight(scaled_px(VIDEO_EDITOR_TOOLBAR_HEIGHT_PX))
 
     toolbar_layout = QHBoxLayout(toolbar_frame)
     toolbar_layout.setContentsMargins(scaled_px(10), scaled_px(5), scaled_px(10), scaled_px(5))
@@ -820,7 +837,7 @@ def create_toolbar(dialog):
 def create_timeline_scroll_area(dialog):
     scroll_area = SurfaceScrollArea()
     scroll_area.setObjectName("VideoEditorTimelineScrollArea")
-    scroll_area.setMinimumHeight(scaled_px(210))
+    scroll_area.setMinimumHeight(scaled_px(MIN_VIDEO_EDITOR_TIMELINE_HEIGHT_PX))
 
     store = None
     if hasattr(dialog, "export_controller") and dialog.export_controller:
