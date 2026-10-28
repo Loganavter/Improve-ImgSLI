@@ -456,6 +456,12 @@ def main(argv: list[str] | None = None) -> int:
                         raise RuntimeError("the card menu has no 'Reset metrics cache' row")
                     reset_info["menu_row"] = rows[0].get("label")
                     control_now.call("ui_click", id=rows[0]["id"])
+                    # The clear must be VISIBLE immediately (the action re-runs by
+                    # design, so a later reading shows the re-run, not the clear).
+                    time.sleep(0.5)
+                    reset_info["state_after"] = control_now.call(
+                        "get_state", path="tabs.image_gallery"
+                    ).get("state")
                     reset_info["fired"] = True
                 except Exception as exc:  # noqa: BLE001 — a failed reset is the verdict
                     reset_info["fired"] = False
@@ -465,15 +471,22 @@ def main(argv: list[str] | None = None) -> int:
             watcher.start()
         from devtools import live_gallery_ai_run as driver
 
-        code = driver.main([
+        driver_args = [
             "--folder", str(folder),
             "--domain", "ai",
             "--timeout", str(args.timeout),
             "--quiet", str(args.quiet),
             "--log", str(args.log),
-            "--require-judge",
             "--keep-app",
-        ])
+        ]
+        if args.scenario == "chain":
+            # The chain proof must spend the judge calls; the RESET proof cannot
+            # — the barrier cancels the run, so "judge run done" never appears and
+            # a strict settle would wait out the whole timeout (measured
+            # 2026-10-28: 300 s burned, verdict "did not settle", while the run
+            # itself had behaved correctly).
+            driver_args.append("--require-judge")
+        code = driver.main(driver_args)
         verdict["driver_exit"] = code
         if code != 0:
             verdict["reason"] = "the driver did not settle"
@@ -525,6 +538,7 @@ def main(argv: list[str] | None = None) -> int:
         # readable here even when the on-disk log is INFO-only.
         deep = control.call("read_log", level="DEBUG", n=4000).get("lines") or []
         needles = ("local metrics", "not persisted", "previous mode", "proxy", "chunk")
+        verdict["deep_log"] = [row.get("text", "") for row in deep]
         verdict["local_pass_log"] = [
             row["text"] for row in deep if any(n in row.get("text", "").lower() for n in needles)
         ][:25]
@@ -618,20 +632,27 @@ def main(argv: list[str] | None = None) -> int:
         late_lines = []
         for row in verdict["log_lines"].get("analyze_start", []) + verdict["log_lines"].get("rank", []):
             late_lines.append(row)
+        drop_after = [
+            row for row in verdict.get("deep_log", [])
+            if "dropped" in row.lower() and "in flight" in row.lower() and _line_ms(row) >= after_ms
+        ]
         checks = {
             "reset_fired_during_the_run": bool(reset_info.get("fired")),
-            "run_was_active_when_it_fired": bool(reset_info.get("state_before", {}).get("item_count")),
-            "gallery_is_empty_after_drain": int(
-                (verdict.get("gallery_state") or {}).get("metrics_cache_size") or 0
+            "run_was_active_when_it_fired": int(
+                (reset_info.get("state_before") or {}).get("metrics_cache_size") or 0
+            ) > 0,
+            # "Reset metrics cache" DROPS the measured caches and THEN re-runs
+            # (the action's own docstring), so the pass is measured right after
+            # the click and the barrier is measured by what a pre-reset delivery
+            # could have written — never by "no work happened afterwards".
+            "clear_was_immediate": int(
+                (reset_info.get("state_after") or {}).get("metrics_cache_size") or 0
             ) == 0,
+            "pre_reset_delivery_was_dropped": bool(drop_after),
+            "no_cache_file_written_after_reset": newest * 1000.0 < after_ms,
             "no_rank_after_reset": not [
                 row for row in verdict["log_lines"].get("rank", [])
                 if "jev rank applied" in row and _line_ms(row) >= after_ms
-            ],
-            "no_cache_file_written_after_reset": newest * 1000.0 < after_ms,
-            "no_analysis_started_after_reset": not [
-                row for row in verdict["log_lines"].get("analyze_start", [])
-                if _line_ms(row) >= after_ms
             ],
         }
         verdict["reset"] = reset_info
