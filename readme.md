@@ -16,7 +16,7 @@
 <p align="center">Read this in other languages: <a href="README.ru.md">Русский</a></p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/main/Improve_ImgSLI/screenshots/readme/image-compare.jpg" alt="Image Compare with the magnifier open over two photos">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/main/Improve_ImgSLI/screenshots/readme/image-compare.png" alt="Image Compare with the magnifier: a sharp source against the upscaled blocks">
 </p>
 
 ## What it is
