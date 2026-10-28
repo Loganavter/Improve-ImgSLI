@@ -4,6 +4,7 @@ __pycache__/
 # Agent tooling (committed rules + skills under .cursor/ + ordinary skills/)
 .claude/
 .agents/
+.agent/
 .codex/
 .cursor/*
 !.cursor/rules/
