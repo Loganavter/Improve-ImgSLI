@@ -1,6 +1,7 @@
 from tabs.host_helpers import get_overlay_layer
 from tabs.image_compare.canvas.registry import registry
 from sli_ui_toolkit.managers import scaled_px
+from sli_ui_toolkit.widgets import normalized_icon_pixmap, widget_dpr
 
 def _query_overlay_orientation(store) -> bool:
     query = registry().get_feature_command_by_alias("overlay.is_horizontal")
@@ -60,7 +61,9 @@ def _show_orientation_popup(presenter):
     overlay_layer.show_popup(
         "orientation_popup",
         button,
-        pixmap=get_icon(icon_enum).pixmap(18, 18),
+        pixmap=normalized_icon_pixmap(
+            get_icon(icon_enum), 18, dpr=widget_dpr(button)
+        ),
         size=_orientation_popup_size(),
         position="top",
         offset=6,

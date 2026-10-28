@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from core.startup_trace import startup_mark
-from sli_ui_toolkit.widgets import ButtonGroup, Slider, Text
+from sli_ui_toolkit.widgets import ButtonGroup, Slider, Text, normalized_icon_pixmap, widget_dpr
 
 from sli_ui_toolkit.i18n import tr
 from sli_ui_toolkit.managers import scaled_px
@@ -54,8 +54,17 @@ class ScaledIconLabel(QLabel):
 
     def _apply_scale(self, _factor: float | None = None) -> None:
         size = scaled_px(self._pixel_size)
-        self.setPixmap(get_icon(self._icon).pixmap(QSize(size, size)))
+        # Explicit paint ratio: QIcon.pixmap(size) would use the application
+        # ratio (2.0 on a 125% Wayland session while the window paints at 1.25).
+        self.setPixmap(
+            normalized_icon_pixmap(get_icon(self._icon), size, dpr=widget_dpr(self))
+        )
         self.setFixedSize(size, size)
+
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt name)
+        # Built before the window is on a screen: re-render at the window ratio.
+        super().showEvent(event)
+        self._apply_scale()
 
 
 # Vertical gap between the magnifier flyout's slider rows (design px —

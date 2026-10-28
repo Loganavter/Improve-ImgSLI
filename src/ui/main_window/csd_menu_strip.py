@@ -21,6 +21,8 @@ from core.log_names import APP_LOGGER_NAME
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
+from sli_ui_toolkit.widgets import normalized_icon_pixmap, painter_dpr
+
 
 def csd_debug(*args) -> None:
     logger.debug(*args)
@@ -77,19 +79,20 @@ _ROW_ICON_GAP = 8
 _ROW_ICON_LEFT = 8
 
 
-def _row_icon_pixmap(icon_value, size: int):
-    """Resolve one row icon to a QPixmap (None when absent/unresolvable)."""
+def _row_icon_source(icon_value):
+    """Resolve one row icon to a QIcon (None when absent/unresolvable).
+
+    The raster is produced in ``paintEvent`` with the painter's own ratio:
+    ``QIcon.pixmap(size)`` uses the *application* ratio (2.0 on a 125% Wayland
+    session while the window paints at 1.25), which resampled every row icon.
+    """
     if icon_value is None:
         return None
     try:
-        from PySide6.QtCore import QSize
-
         from sli_ui_toolkit.icons import resolve_icon
 
         icon = resolve_icon(icon_value)
-        if icon is None or icon.isNull():
-            return None
-        return icon.pixmap(QSize(int(size), int(size)))
+        return None if icon is None or icon.isNull() else icon
     except Exception:
         return None
 
@@ -176,7 +179,7 @@ class CsdMenuRow(Button):
         self._shortcut = _shortcut_display_text(action.shortcut)
         self._icon_size = scaled_px(_ROW_ICON_SIZE)
         self._icon_left = scaled_px(_ROW_ICON_LEFT)
-        self._icon_pixmap = _row_icon_pixmap(getattr(action, "icon", None), self._icon_size)
+        self._icon_source = _row_icon_source(getattr(action, "icon", None))
         # Measured once per row and reused by ``sizeHint``: a row is rebuilt on
         # every flyout open (never long-lived), and the split rect below bakes
         # ``trailing`` at construction time — re-measuring in ``sizeHint``
@@ -190,7 +193,7 @@ class CsdMenuRow(Button):
         )
         self._shortcut_metrics = QFontMetrics(ui_font(pixel_size=_SHORTCUT_PIXEL_SIZE))
         icon_lead = (
-            _ROW_ICON_SIZE + _ROW_ICON_GAP if self._icon_pixmap is not None else 0
+            _ROW_ICON_SIZE + _ROW_ICON_GAP if self._icon_source is not None else 0
         )
         # Horizontal content padding is widget-wide: the toolkit's row painter
         # subtracts it from EVERY region rect (``content._rect``), not just the
@@ -284,13 +287,16 @@ class CsdMenuRow(Button):
 
     def paintEvent(self, event) -> None:  # noqa: N802 (Qt name)
         super().paintEvent(event)
-        pixmap = getattr(self, "_icon_pixmap", None)
-        if pixmap is None:
+        source = getattr(self, "_icon_source", None)
+        if source is None:
             return
         try:
             from PySide6.QtGui import QPainter
 
             painter = QPainter(self)
+            pixmap = normalized_icon_pixmap(
+                source, self._icon_size, dpr=painter_dpr(painter)
+            )
             y = (self.height() - self._icon_size) // 2
             painter.drawPixmap(self._icon_left, y, pixmap)
             painter.end()
@@ -303,7 +309,7 @@ class CsdMenuRow(Button):
         trailing = sc_w + scaled_px(_SHORTCUT_GAP) if sc_w else 0
         lead = (
             self._icon_size + scaled_px(_ROW_ICON_GAP)
-            if getattr(self, "_icon_pixmap", None) is not None
+            if getattr(self, "_icon_source", None) is not None
             else 0
         )
         return QSize(
