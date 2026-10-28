@@ -13,7 +13,8 @@
     "remember_by_default": "Remember by default",
     "lock_aspect_ratio": "Lock aspect ratio",
     "select_background_color": "Select Background Color",
-    "select_output_directory": "Select Output Directory"
+    "select_output_directory": "Select Output Directory",
+    "export_first_frame": "Only the first frame is exported"
   },
   "tooltip": {
     "use_favorite": "Use Favorite"

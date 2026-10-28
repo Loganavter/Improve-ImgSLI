@@ -13,7 +13,8 @@
     "remember_by_default": "Lembrar por padrão",
     "lock_aspect_ratio": "Bloquear proporção",
     "select_background_color": "Selecionar Cor de Fundo",
-    "select_output_directory": "Selecionar Diretório de Saída"
+    "select_output_directory": "Selecionar Diretório de Saída",
+    "export_first_frame": "Apenas o primeiro quadro é exportado"
   },
   "tooltip": {
     "use_favorite": "Usar Favorito"

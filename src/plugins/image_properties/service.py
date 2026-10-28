@@ -1,12 +1,23 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
 from PIL import ExifTags, Image
+
+# The first-frame honesty row is a separate module (this one is at the
+# file-size policy limit); re-exported here because callers reach the panel
+# through this service, and the option rows they build are the same rows.
+from .first_frame import first_frame_rows
+from .values import (
+    format_aspect_ratio,
+    format_bytes,
+    format_dpi,
+    normalize_exif_value,
+    stringify,
+)
 
 
 @dataclass(frozen=True)
@@ -16,6 +27,11 @@ class ImagePropertyRow:
     value: str
     value_key: str = ""
     fallback_value: str = ""
+    #: Placeholders for a ``value_key`` translation that is not a constant,
+    #: e.g. the frame_of key ("1 of {n}"). A tuple of pairs (not a dict) so the
+    #: row stays frozen/hashable; :func:`apply_row_params` fills them in at
+    #: render time, in whatever language the panel is drawn in.
+    value_params: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -47,6 +63,21 @@ class ImageProperties:
         return "\n".join(lines)
 
 
+def apply_row_params(text: str, params: tuple[tuple[str, str], ...]) -> str:
+    """Fill ``{n}``-style placeholders of a translated row value.
+
+    A translation that lost or renamed its placeholder must not raise inside
+    rendering (a locale file is not code): the text is returned unfilled
+    instead, which reads as a slightly clumsy row, not as a broken panel.
+    """
+    if not params:
+        return text
+    try:
+        return text.format(**dict(params))
+    except (KeyError, IndexError, ValueError):
+        return text
+
+
 def build_image_properties(
     *,
     path: str | Path | None,
@@ -68,11 +99,13 @@ def build_image_properties(
 
     file_rows = _file_rows(source_path, display_name, source_info)
     image_rows = _image_rows(dimensions, mode, channels, source_info)
+    # Appended last so the familiar Size / Color mode order never shifts.
+    image_rows.extend(first_frame_rows(source_path, source_info))
     metadata_rows = _metadata_rows(source_info)
     app_section_rows = tuple(
-        ImagePropertyRow(key, fallback, _stringify(value))
+        ImagePropertyRow(key, fallback, stringify(value))
         for key, fallback, value in app_rows
-        if _stringify(value)
+        if stringify(value)
     )
 
     sections = [
@@ -122,6 +155,15 @@ def _read_source_info(path: Path | None) -> dict[str, Any]:
             info["format"] = img.format
             info["mode"] = img.mode
             info["dimensions"] = img.size
+            if img.format != "PSD":
+                # Frame count, for the first-frame notice. PSD is skipped on
+                # purpose: its ``n_frames`` is the LAYER count, and reading it
+                # parses the (large) layer section — the panel reports layers,
+                # not frames. Absent key = no decoder reported a count, which
+                # ``first_frame_notice`` handles by omitting the number.
+                frames = getattr(img, "n_frames", None)
+                if isinstance(frames, int) and frames > 0:
+                    info["frame_count"] = frames
             dpi = img.info.get("dpi")
             if dpi:
                 info["dpi"] = dpi
@@ -133,7 +175,7 @@ def _read_source_info(path: Path | None) -> dict[str, Any]:
                 exif = None
             if exif:
                 info["exif"] = {
-                    ExifTags.TAGS.get(tag, tag): _normalize_exif_value(value)
+                    ExifTags.TAGS.get(tag, tag): normalize_exif_value(value)
                     for tag, value in exif.items()
                 }
     except Exception as exc:
@@ -226,7 +268,7 @@ def _file_rows(
                     ImagePropertyRow(
                         "image_properties.file_size",
                         "File size",
-                        _format_bytes(stat.st_size),
+                        format_bytes(stat.st_size),
                     )
                 )
                 rows.append(
@@ -280,7 +322,7 @@ def _image_rows(
             ImagePropertyRow(
                 "image_properties.aspect_ratio",
                 "Aspect ratio",
-                _format_aspect_ratio(width, height),
+                format_aspect_ratio(width, height),
             )
         )
         if width > height:
@@ -315,7 +357,7 @@ def _image_rows(
         )
     dpi = source_info.get("dpi")
     if dpi:
-        rows.append(ImagePropertyRow("image_properties.dpi", "DPI", _format_dpi(dpi)))
+        rows.append(ImagePropertyRow("image_properties.dpi", "DPI", format_dpi(dpi)))
     color_profile = source_info.get("color_profile")
     if color_profile:
         rows.append(
@@ -344,7 +386,7 @@ def _metadata_rows(source_info: dict[str, Any]) -> list[ImagePropertyRow]:
     for exif_name, key, fallback in wanted:
         value = exif.get(exif_name)
         if value not in (None, ""):
-            rows.append(ImagePropertyRow(key, fallback, _stringify(value)))
+            rows.append(ImagePropertyRow(key, fallback, stringify(value)))
     return rows
 
 
@@ -399,66 +441,10 @@ def _channels_from_mode(mode: str | None) -> int | None:
     }.get(mode)
 
 
-def _format_bytes(size: int) -> str:
-    units = ("B", "KB", "MB", "GB", "TB")
-    value = float(size)
-    unit = units[0]
-    for unit in units:
-        if abs(value) < 1024.0 or unit == units[-1]:
-            break
-        value /= 1024.0
-    if unit == "B":
-        return f"{int(value)} {unit}"
-    return f"{value:.2f} {unit}"
-
-
-def _format_aspect_ratio(width: int, height: int) -> str:
-    if width <= 0 or height <= 0:
-        return "-"
-    divisor = math.gcd(width, height)
-    simplified = f"{width // divisor}:{height // divisor}"
-    decimal = width / height
-    return f"{simplified} ({decimal:.3f})"
-
-
-def _format_dpi(dpi: Any) -> str:
-    if isinstance(dpi, tuple) and len(dpi) >= 2:
-        return f"{_stringify(dpi[0])} x {_stringify(dpi[1])}"
-    return _stringify(dpi)
-
-
-def _normalize_exif_value(value: Any) -> Any:
-    if isinstance(value, bytes):
-        try:
-            return value.decode("utf-8", errors="replace").strip("\x00")
-        except Exception:
-            return repr(value)
-    if isinstance(value, tuple):
-        return tuple(_normalize_exif_value(item) for item in value)
-    return value
-
-
-def _stringify(value: Any) -> str:
-    if value in (None, ""):
-        return ""
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, float):
-        return f"{value:g}"
-    if isinstance(value, tuple):
-        return " x ".join(_stringify(item) for item in value)
-    numerator = getattr(value, "numerator", None)
-    denominator = getattr(value, "denominator", None)
-    if isinstance(numerator, int) and isinstance(denominator, int) and denominator:
-        if numerator > denominator:
-            return f"{numerator / denominator:g}"
-        return f"{numerator}/{denominator}"
-    return str(value)
-
-
 def _row_value(row: ImagePropertyRow, translate) -> str:
     if row.value_key:
-        return _translated(translate, row.value_key, row.fallback_value or row.value)
+        text = _translated(translate, row.value_key, row.fallback_value or row.value)
+        return apply_row_params(text, row.value_params)
     return row.value or "-"
 
 
