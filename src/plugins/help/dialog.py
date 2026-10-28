@@ -481,6 +481,35 @@ class HelpDialog(ThemedDialog):
         QTimer.singleShot(0, self._focus_help_container)
         QTimer.singleShot(60, self._focus_help_container)
 
+    def _focus_is_in_title_bar(self, focused: QWidget | None) -> bool:
+        """True when *focused* is the CSD title bar or a control inside it.
+
+        The bar is a navigation section of its own
+        (``register_dialog_title_bar_navigation``), so focus resting in it is a
+        real stop — a deferred focus grant must never take it away. Both grants
+        fire late (0 and 60 ms after show / after a page render), and on a slow
+        runner that lands *between* two key presses: a keyboard walk
+        bar -> back bar -> bar loses its middle hop to the timer and the dialog
+        then looks like it resolved Up into another section (measured
+        2026-10-28: ``Button -> HelpHubPage -> help-content-host`` 200 ms after
+        focusing the close button, while the same keys walk ``Button ->
+        WindowControlsCluster -> CustomTitleBar`` once the timers have fired).
+        Quarantined as
+        ``tests/runtime/test_dialog_title_bar_nav.py::test_help_dialog_title_bar_is_navigable``;
+        it is a late timer, not layout geometry.
+        """
+        bar = getattr(self, "_csd_title_bar", None)
+        if bar is None or focused is None:
+            return False
+        try:
+            from shiboken6 import isValid
+
+            if not isValid(bar):
+                return False
+            return focused is bar or bar.isAncestorOf(focused)
+        except (RuntimeError, TypeError):
+            return False
+
     def _focus_help_container(self) -> None:
         try:
             from shiboken6 import isValid
@@ -497,6 +526,11 @@ class HelpDialog(ThemedDialog):
                 focused is self._content_host
                 or self._content_host.isAncestorOf(focused)
             ):
+                return
+            if self._focus_is_in_title_bar(focused):
+                # Title-bar focus is a legitimate stop (its section owns Up);
+                # this timer repairs "nothing focused yet", it does not take
+                # focus back from the chrome.
                 return
             # Modality comes from the input device, never from this dialog:
             # forcing ``_last_input_keyboard = True`` here made a MOUSE-opened
@@ -1103,13 +1137,18 @@ class HelpDialog(ThemedDialog):
             if not isValid(self) or not self.isVisible():
                 return
             focused = QApplication.focusWidget()
+            if self._focus_is_in_title_bar(focused):
+                # The CSD title bar is not one of the columns this restore
+                # repairs, and it owns its own section: focus resting there is
+                # live keyboard focus, so a 60 ms restore must not move it (see
+                # ``_focus_is_in_title_bar``; without this the bar -> back bar
+                # -> bar sequence lost its first hop to a late timer).
+                return
             if focused is not None and isValid(focused) and self.isAncestorOf(focused) and focused.isVisible():
                 if focused.objectName() in ("HelpBackBar", "HelpSearchField", "HelpDialog"):
                     pass
                 elif self._content_host.isAncestorOf(focused) or self.nav_widget.isAncestorOf(focused) or self._back_bar.isAncestorOf(focused) or focused is self._search_field:
                     # Навигабельный виджет всё ещё жив — не трогаем (как в Settings)
-                    # Фильтр CustomTitleBar/OverlayScrollArea уже покрыт isAncestorOf выше:
-                    # они не внутри _content_host/nav_widget/_back_bar
                     if focused.objectName() not in ("HelpBackBar",):
                         return
             from sli_ui_toolkit.managers import NavigationManager
