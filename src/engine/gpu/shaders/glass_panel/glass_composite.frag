@@ -20,7 +20,13 @@ layout(std140, binding = 0) uniform UBuf
     vec4 tint;
     vec2 panelSizePx;
     float borderWidthPx;
-    float _pad0;
+    // 1.0 when the *backdrop* this pass sampled came out row-reversed, i.e.
+    // widget_texture_needs_y_flip(rhi) -- the same bit glass_blur.frag gates
+    // its sample V on, packed into the std140 slot that used to be padding
+    // (offset 40, so the 80-byte block is unchanged). Read by the directional
+    // lighting below, never by the geometry: the SDF path is symmetric and
+    // must stay in raster space.
+    float flipY;
     vec4 borderColor;
     // IMGSLI_GLASS_PANEL_DEBUG_TINT=1 diagnostic only: a>0.5 shows this
     // panel's raw scratchTex (blur_tex) content *unmodified* -- no lensing/
@@ -140,15 +146,36 @@ void main()
     // *2.5) and a lower peak -- on a small panel a wide band plus an
     // unclamped additive term was enough to wash the whole thing toward
     // white rather than reading as a thin highlight.
+    //
+    // The light is resolved in PANEL space, not raster space: this pass
+    // applies no clip correction of its own, so its own row order is not
+    // guaranteed to be the panel's -- the one row-order fact this chain does
+    // know is the backdrop's, and glass_blur.frag already gates its sample V on
+    // exactly that bit (`flipY`). Flipping the normal's Y through the same gate
+    // keeps the two directional terms (this and topGlow) agreeing on which edge
+    // is lit whatever the target's row order is. The SDF stays in raster space
+    // on purpose: the rounded rect is symmetric, so the shape, border and alpha
+    // are invariant to it.
     vec2 lightDir = normalize(vec2(-0.55, -0.8));
-    float ndotl = clamp(dot(normal, lightDir), 0.0, 1.0);
+    vec2 panelNormal = vec2(normal.x, mix(normal.y, -normal.y, flipY));
+    float ndotl = clamp(dot(panelNormal, lightDir), 0.0, 1.0);
     float rimBand = 1.0 - smoothstep(0.0, borderWidthPx * 1.5, abs(d));
     float specular = pow(ndotl, 3.0) * rimBand * 0.18;
 
     // Steeper, lower-peak falloff than before (was pow(.,3)*0.28) -- that
     // washed out the whole top edge, worst on short panels where "top" is
     // a large fraction of the whole height.
-    float topGlow = pow(clamp(1.0 - vUv.y, 0.0, 1.0), 8.0) * 0.10;
+    //
+    // Which edge is "top", same rule as the specular above and the SAME bit
+    // glass_blur.frag uses for its sample V: `flipY` is
+    // widget_texture_needs_y_flip(rhi), packed by glass_panel.py into the slot
+    // this block used to waste on padding. A bare `1.0 - vUv.y` would tie the
+    // highlight to the raster's own row order, which is why the light could
+    // land on a different edge per backend; going through the gate keeps the
+    // light mirrored with the panel, not with the image's row order. Not a
+    // second convention -- one bit, one meaning, both passes.
+    float panelY = mix(vUv.y, 1.0 - vUv.y, flipY);
+    float topGlow = pow(clamp(1.0 - panelY, 0.0, 1.0), 8.0) * 0.10;
     vec3 glass = tintedGlass + vec3(topGlow + specular);
 
     // Shape edge, alpha cutout: this part alone (no border band) turned out

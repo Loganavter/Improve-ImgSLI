@@ -68,6 +68,7 @@ from devtools.live_gallery_ai_common import (
     _line_ms,
     _local_axis_values,
     _read_entries,
+    decode_probe,
     _socket_target,
     _stop_app,
     _stub_router,
@@ -312,35 +313,10 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(1.5)
         verdict["local_pass_settled"] = settled_local
 
-        # Decode counters (W7 item 3): the tracer spans `decode.proxy` /
-        # `decode.store` / `decode.coarse`, so a live cold/warm count needs no
-        # instrumented build — and the WARM half is what a cache claim is about.
-        def _decode_counts() -> dict:
-            rows = control.call("query_trace", filter="decode.", n=2000).get("records") or []
-            counts: dict[str, dict[str, int]] = {}
-            for row in rows:
-                kind = str(row.get("kind") or "")
-                if not kind.startswith("decode."):
-                    continue
-                payload = row.get("payload") or {}
-                counts.setdefault(kind, {})
-                path = str(payload.get("path") or "?")
-                counts[kind][path] = counts[kind].get(path, 0) + 1
-            return counts
-
-        cold = _decode_counts()
-        verdict["decode_cold"] = cold
-        try:
-            control.call("open_folder", path=str(folder), tab="image_gallery")
-            time.sleep(3.0)
-            warm = _decode_counts()
-            verdict["decode_warm"] = warm
-            verdict["decode_warm_added"] = {
-                kind: sum(warm.get(kind, {}).values()) - sum(cold.get(kind, {}).values())
-                for kind in set(cold) | set(warm)
-            }
-        except Exception as exc:  # noqa: BLE001 - a warm probe failure is not the chain's
-            verdict["decode_warm"] = f"unavailable: {type(exc).__name__}: {exc}"
+        probe = decode_probe(control, folder)
+        verdict["decode_cold"] = probe["cold"]
+        verdict["decode_warm"] = probe["warm"]
+        verdict["decode_warm_added"] = probe["added"]
 
         try:
             trace = control.call("query_trace", filter=JUDGE_ONLY_AXIS, n=40)

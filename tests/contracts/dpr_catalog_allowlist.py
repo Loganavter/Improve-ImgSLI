@@ -107,10 +107,9 @@ DPR_ALLOWLIST: dict[tuple[str, str, str], str] = {
         "legal_ratio_compare_own_input.py"
     ),
     # --- uv-flip-compensation ------------------------------------------------
-    ("src/engine/gpu/shaders/glass_panel/glass_composite.frag", "<shader>", "uv-flip-compensation"): (
-        "`clamp(1.0 - vUv.y, 0, 1)` here is the WEIGHT of a top glow (pow 8), "
-        "not a raster flip: it is a cosmetic gradient parameter that happens to "
-        "be written in UV space. No pixel is mirrored; the copy/readback row "
-        "order is handled by WIDGET_TEXTURE in glass_blur.frag"
-    ),
+    # (empty: glass_composite.frag's top glow used to sit here as a "gradient
+    # weight, not a flip". It now resolves its top edge through `flipY` -- the
+    # same widget_texture_needs_y_flip bit glass_blur.frag gates its sample V
+    # on -- so the rule goes quiet at that site instead of needing a reason.
+    # The ratchet is meant to shrink: do not re-add an entry for it.)
 }

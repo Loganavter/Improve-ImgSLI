@@ -29,7 +29,6 @@ def install_instrumentation() -> None:
     _patch_render_plan()
     _patch_hit_test()
     _patch_canvas_input()
-    _patch_decodes()
 
     logger.info("BlinkTable tracer instrumentation installed")
 
@@ -390,78 +389,6 @@ def _patch_hit_test() -> None:
         geom_mod.find_scene_object_at_position = traced_find
     except Exception:
         pass
-
-def _patch_decodes() -> None:
-    """Span the three decode entry points — the number W7 item 3 owed.
-
-    The isolation-tier fixtures assert "cold = 1 open per image, warm reopen = 0,
-    one Quick-Look dwell = 1 store", but nothing counted decodes in a LIVE run.
-    A span is the instrument (not a product counter): the tracer already installs
-    from ``IMGSLI_TRACE=1``, ``query_trace`` is already a control method, and the
-    full-res store already logs one INFO line per open — so this only had to cover
-    the PROXY decode, which logged nothing.
-
-    Kinds: ``decode.proxy`` (shared bounded proxy, cached), ``decode.store``
-    (full-res tiled store) and ``decode.coarse`` (coarse page for the tiler). The
-    payload carries the path, the edge and the outcome (hit/miss/None), so a live
-    proof can count per item and name WHY a decode happened.
-    """
-    tracer = Tracer.instance()
-
-    def _wrap(kind: str, owner: object, name: str, describe) -> None:  # noqa: ANN001
-        try:
-            orig = getattr(owner, name)
-        except Exception:
-            logger.debug("decode patch skipped for %s", name, exc_info=True)
-            return
-
-        def traced(*args, **kwargs):
-            if not Tracer.enabled():
-                return orig(*args, **kwargs)
-            payload = describe(args, kwargs)
-            t0 = time.monotonic()
-            try:
-                result = orig(*args, **kwargs)
-            except Exception as exc:
-                tracer.record(kind, f"{name} raised {type(exc).__name__}: {exc}", {**payload, "outcome": "raised"}, caller_skip=1)
-                raise
-            outcome = "none" if result is None else "ok"
-            tracer.record(
-                kind,
-                f"{name} -> {outcome}",
-                {**payload, "outcome": outcome, "duration_ms": round((time.monotonic() - t0) * 1000.0, 2)},
-                caller_skip=1,
-            )
-            return result
-
-        try:
-            setattr(owner, name, traced)
-        except Exception:
-            logger.debug("decode patch could not wrap %s", name, exc_info=True)
-
-    try:
-        from tabs.image_gallery.services import proxy as proxy_mod
-
-        def _proxy_fields(args, kwargs):
-            path = args[0] if args else kwargs.get("path")
-            return {"path": str(path), "edge": "proxy"}
-
-        _wrap("decode.proxy", proxy_mod, "proxy_for", _proxy_fields)
-        if hasattr(proxy_mod, "coarse_from_source"):
-            _wrap("decode.coarse", proxy_mod, "coarse_from_source", _proxy_fields)
-    except Exception:
-        logger.debug("gallery proxy decode patch skipped", exc_info=True)
-
-    try:
-        from engine.store import tiled_pixel_store as store_mod
-
-        def _store_fields(args, kwargs):
-            path = args[1] if len(args) > 1 else kwargs.get("path")
-            return {"path": str(path), "edge": "full-res"}
-
-        _wrap("decode.store", store_mod.TiledPixelStore, "from_path", _store_fields)
-    except Exception:
-        logger.debug("tiled store decode patch skipped", exc_info=True)
 
 def _iter_tab_canvas_widget_classes():
     """Discover each tab's ``canvas.widget.CanvasWidget`` class, if any.

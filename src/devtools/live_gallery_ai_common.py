@@ -106,6 +106,50 @@ def _line_ms(line: str) -> int:
         return 0
 
 
+def decode_counts(control) -> dict[str, dict[str, int]]:
+    """``{kind: {path: n}}`` from the tracer ring (``decode.proxy``/``.store``/``.coarse``).
+
+    The live decode counter W7 item 3 chose: a tracer span, not an instrumented
+    build — the tracer installs from ``IMGSLI_TRACE=1`` and ``query_trace`` is
+    already a control method, so nothing product-side had to grow a counter.
+    """
+    rows = control.call("query_trace", filter="decode.", n=2000).get("records") or []
+    counts: dict[str, dict[str, int]] = {}
+    for row in rows:
+        kind = str(row.get("kind") or "")
+        if not kind.startswith("decode."):
+            continue
+        payload = row.get("payload") or {}
+        path = str(payload.get("path") or "?")
+        bucket = counts.setdefault(kind, {})
+        bucket[path] = bucket.get(path, 0) + 1
+    return counts
+
+
+def decode_probe(control, folder, *, settle_s: float = 3.0) -> dict:
+    """Cold counts, then a folder REOPEN, then the delta — one dict for the verdict.
+
+    The reopen is the honest warm probe: measured 2026-10-28 it re-decodes every
+    item (the proxy cache does not survive a pool reset), which is a design fact to
+    REPORT, not a failed assertion — the isolation suites' "warm reopen = 0" is
+    about re-reading the SAME file (Quick Look), not about reopening the folder.
+    """
+    import time as _time
+
+    cold = decode_counts(control)
+    try:
+        control.call("open_folder", path=str(folder), tab="image_gallery")
+        _time.sleep(settle_s)
+        warm = decode_counts(control)
+        added = {
+            kind: sum(warm.get(kind, {}).values()) - sum(cold.get(kind, {}).values())
+            for kind in set(cold) | set(warm)
+        }
+    except Exception as exc:  # noqa: BLE001 - a warm probe failure is not the chain's
+        return {"cold": cold, "warm": f"unavailable: {type(exc).__name__}: {exc}", "added": None}
+    return {"cold": cold, "warm": warm, "added": added}
+
+
 def _stub_router(delay_s: float = 0.0):
     """One stub, three question shapes: profile, pairwise, scorecard."""
 
