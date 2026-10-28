@@ -69,12 +69,16 @@ def test_typing_reuses_the_row_widgets(qtbot, catalog, monkeypatch):
 
     dialog._search.setText("label")
     dialog._reload()
-    assert [id(row) for row in dialog._rows] == first_rows, (
+    # The materialized window may grow/shrink with the viewport, so the list is
+    # not identical — but every row it does show must be the *same widget*.
+    assert set(first_rows) <= set(id(row) for row in dialog._rows), (
         "the same actions must keep their row widgets across a query change"
     )
-    assert len(built) == first_build, (
-        f"a keystroke rebuilt {len(built) - first_build} rows; the list must "
-        "reuse them (this was the 187-359 ms per keystroke lag)"
+    rebuilt = [action_id for action_id in set(built) if built.count(action_id) > 1]
+    assert rebuilt == [], (
+        f"a keystroke rebuilt rows for {rebuilt}; the list must reuse them "
+        "(this was the 187-359 ms per keystroke lag). Rows for newly visible "
+        "actions may be materialized - that is the virtual list, not a rebuild."
     )
 
     dialog._search.setText("zebra")
