@@ -240,9 +240,20 @@ on an empty filter result (that would rebuild everything on the next backspace
 — 80 ms for 300 rows). Keyboard-shortcut overrides are resolved once per reload
 (`current_keyboard_overrides` in `palette/common.py`) and passed into every row
 instead of each row walking `QApplication.topLevelWidgets()` on its own.
+The list is **virtualized** (app PR #808): rows exist only for the viewport plus
+an overscan of 3, and two spacers carry the scroll extent of the rest. A row is a
+themed composite `Button` (~2.7 ms), so materializing every action made the dialog
+cost 375 ms on a 100-action catalog and grow with the catalog; the windowed list
+costs 176 ms and is **flat** in catalog size (300 actions materialize 7 rows).
+Scrolling materializes the window under the viewport, and moving the selection
+materializes the row it lands on, so keyboard navigation still addresses the
+whole filtered list, not just the visible slice.
+
 Guards: `tests/plugins/test_find_action_filter_cost.py` (row identity, no
-description matching) and `tests/plugins/test_find_action_live_query.py` (query
-applied on the keystroke, scroll back to the top).
+description matching), `tests/plugins/test_find_action_live_query.py` (query
+applied on the keystroke, scroll back to the top) and
+`tests/plugins/test_find_action_virtual_list.py` (only the visible slice is
+materialized; scroll and selection materialize on demand).
 
 ## Registration sites
 
