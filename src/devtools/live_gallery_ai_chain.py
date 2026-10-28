@@ -43,6 +43,15 @@ import sys
 import time
 from pathlib import Path
 
+# The tool is run as a SCRIPT (`venv/bin/python src/devtools/live_gallery_ai_chain.py`),
+# which puts `src/devtools` on sys.path, not `src` — so its own package import
+# needs the repo root added BEFORE it runs. (Measured 2026-10-28: after the split
+# into `live_gallery_ai_common` the tool died with ModuleNotFoundError: devtools
+# while the tests, which set PYTHONPATH=src, stayed green.)
+_SRC = Path(__file__).resolve().parents[1]
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
 from devtools.live_gallery_ai_common import (
     JUDGE_ONLY_AXIS,
     JUDGE_SCORE,
@@ -84,6 +93,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=Path("/tmp/opencode/w7-ai-chain.json"))
     parser.add_argument("--keep-app", action="store_true")
     parser.add_argument("--debug", action="store_true", help="IMGSLI_DEBUG=1 (gallery diagnostics)")
+    parser.add_argument(
+        "--reset-via", choices=("menu", "action"), default="menu",
+        help="how the reset scenario fires 'Reset metrics cache': the card menu "
+             "(what a user had before the Find Action rows existed) or the "
+             "pool-wide gallery.reset-metrics action",
+    )
     parser.add_argument("--lease", default=None, help="allocate and release a lease for this proof")
     args = parser.parse_args(argv)
 
@@ -180,12 +195,45 @@ def main(argv: list[str] | None = None) -> int:
                     ).get("state")
                     reset_info["cache_files_before"] = before
                     reset_info["at_ms"] = int(time.time() * 1000)
-                    # Drive the RESET the way a user does (card context menu).
-                    # The Find Action id ``gallery.reset-metrics`` exists in the
-                    # code but is NOT registered in the live palette (measured
-                    # 2026-10-28: 170 actions, zero ``gallery.*``; the same call
-                    # in-process registers all six), so run_action cannot be the
-                    # proof path here.
+                    if args.reset_via == "action":
+                        # The pool-wide reset: the Find Action row the gallery
+                        # now registers itself (app #776). Before that fix the
+                        # palette had ZERO ``gallery.*`` ids and this path was
+                        # unreachable, which is why the card menu was the only
+                        # drive available.
+                        #
+                        # Ctrl+A FIRST: ``reset_metrics`` deliberately refuses to
+                        # widen an EMPTY scope to the whole pool
+                        # (use_cases/gallery_actions.py), and Ctrl+A selects what
+                        # is visible — the drive a user performs. Measured
+                        # 2026-10-28: without it the action "ran" and cleared
+                        # nothing (metrics_cache_size 6 -> 6).
+                        try:
+                            # Focus first: Ctrl+A selects what the GRID shows, so
+                            # a click into the grid is part of the drive (an
+                            # unlaid-out/unfocused grid refuses, by design).
+                            card = [
+                                row for row in (control_now.call("ui_elements").get("elements") or [])
+                                if row.get("role") == "card" and row.get("label") == "Button"
+                            ]
+                            if card:
+                                control_now.call("ui_click", id=card[0]["id"])
+                            control_now.call("press_keys", keys="Ctrl+A")
+                        except Exception as exc:  # noqa: BLE001 - reported, not fatal
+                            reset_info["select_all_error"] = f"{type(exc).__name__}: {exc}"
+                        time.sleep(0.4)
+                        reset_info["selection"] = (
+                            control_now.call("get_state", path="tabs.image_gallery").get("state")
+                            or {}
+                        ).get("selection_count")
+                        control_now.call("run_action", action_id="gallery.reset-metrics")
+                        reset_info["via"] = "run_action gallery.reset-metrics"
+                        time.sleep(0.5)
+                        reset_info["state_after"] = control_now.call(
+                            "get_state", path="tabs.image_gallery"
+                        ).get("state")
+                        reset_info["fired"] = True
+                        return
                     cards = [
                         row for row in (control_now.call("ui_elements").get("elements") or [])
                         if row.get("role") == "card" and row.get("label") == "Button"
@@ -389,13 +437,24 @@ def main(argv: list[str] | None = None) -> int:
             "run_was_active_when_it_fired": int(
                 (reset_info.get("state_before") or {}).get("metrics_cache_size") or 0
             ) > 0,
-            # "Reset metrics cache" DROPS the measured caches and THEN re-runs
-            # (the action's own docstring), so the pass is measured right after
-            # the click and the barrier is measured by what a pre-reset delivery
-            # could have written — never by "no work happened afterwards".
-            "clear_was_immediate": int(
+            # "Reset metrics cache" DROPS the measured caches for its SCOPE and
+            # then re-runs (the action documents two scopes: the card menu clears
+            # one card, the Find Action clears the selection, and the measured
+            # stores are swept pool-wide either way). So the clear is checked
+            # against the scope, and the barrier is measured by what a pre-reset
+            # delivery could still have written — never by "no work afterwards".
+            "cleared_the_selected_scope": int(
                 (reset_info.get("state_after") or {}).get("metrics_cache_size") or 0
-            ) == 0,
+            )
+            == max(
+                0,
+                int((reset_info.get("state_before") or {}).get("metrics_cache_size") or 0)
+                - int(
+                    reset_info.get("selection")
+                    if reset_info.get("via") == "run_action gallery.reset-metrics"
+                    else 1
+                ),
+            ),
             "pre_reset_delivery_was_dropped": bool(drop_after),
             "no_cache_file_written_after_reset": newest * 1000.0 < after_ms,
             "no_rank_after_reset": not [
