@@ -13,6 +13,8 @@ change cannot widen the Algorithms branch.
 
 from __future__ import annotations
 
+import pytest
+
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -55,6 +57,12 @@ class _Owner:
         return default
 
 
+# Order-dependent under per-test distribution (measured 2026-10-28): green serially, in
+# its own file, and under the tier default (--dist loadfile, 4/4 runs), but it fails in
+# SOME orders when xdist schedules one TEST at a time and each worker shuffles with its
+# own seed — a different test failed in two consecutive runs of the same pinned seed, so
+# there is no single polluter to blame. Documented in docs/dev/TESTING.md § Quarantine.
+@pytest.mark.flaky
 def test_algorithms_action_issues_no_post(counters) -> None:
     item = GalleryItem(path=Path("/gallery/a.png"), mtime_ns=1)
     item.metrics.update({"sharpness": 200.0})
