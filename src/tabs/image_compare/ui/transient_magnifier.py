@@ -170,6 +170,9 @@ class MagnifierVisibilityController:
         self._last_flyout_hide_ts = 0.0
         self._wiring = None
         self._shutdown_done = False
+        # Re-entrancy latch: the flyout's own focus restore re-delivers FocusOut
+        # into _handle_button_event -> hide() (test_transient_magnifier_hide_reentrancy).
+        self._hiding = False
         self._wire_button()
 
     def _is_latched(self) -> bool:
@@ -356,15 +359,19 @@ class MagnifierVisibilityController:
             self.widget.magnifier_visibility_flyout.cancel_auto_hide()
 
     def hide(self, reason: str = "explicit"):
-        if self._is_latched():
-            return
+        if self._is_latched() or self._hiding:
+            return  # Re-entered from our own flyout hide: see _hiding above.
         host = self.manager.host
+        self._hiding = True
         try:
-            self._hover_timer.stop()
-        except Exception:
-            pass
-        self.widget.magnifier_visibility_flyout.hide()
-        host._magn_popup_open = False
+            try:
+                self._hover_timer.stop()
+            except Exception:
+                pass
+            self.widget.magnifier_visibility_flyout.hide()
+            host._magn_popup_open = False
+        finally:
+            self._hiding = False
 
     def event_filter(self, watched, event):
         if self._is_latched():
@@ -456,7 +463,8 @@ class MagnifierVisibilityController:
                         self.hide(reason="focus_out")
                         return False
                 except Exception:
-                    pass
+                    # Never silent: a swallowed RecursionError IS the 2026-10-28 freeze.
+                    logger.exception("[magnifier-visibility] focus-out hide failed")
                 # Still hide when focus truly left the unit
                 self.widget.magnifier_visibility_flyout.schedule_auto_hide(0)
             return False
