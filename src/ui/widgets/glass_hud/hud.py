@@ -380,7 +380,12 @@ class GlassHUD(BaseFlyout):
                 border_width_px=2.0 * dpr,
                 border_color=self._border_highlight_color(),
                 tint=self._glass_tint(),
-                blur_radius_px=_BLUR_RADIUS_PX,
+                # DEVICE px, like the two above: the blur pass renders into a
+                # viewport sized from ``device_size`` (engine/gpu/glass_panel.py
+                # sets the blur target to ``device_size``), so a radius left in
+                # LOGICAL px is half as strong at DPR=2 — the corner radius was
+                # converted and this one was not (measured 2026-10-28).
+                blur_radius_px=_BLUR_RADIUS_PX * dpr,
             ),
         )
         flyout_debug(
