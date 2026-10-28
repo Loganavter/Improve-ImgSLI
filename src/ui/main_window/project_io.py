@@ -105,6 +105,9 @@ class MainWindowProjectIo:
     def _end_project_busy(self, toast, toast_id, message: str, *, ok: bool) -> None:
         busy._end_project_busy(self, toast, toast_id, message, ok=ok)
 
+    def _notify_project_saved(self, path: str) -> None:
+        busy._notify_project_saved(self, path)
+
     def _on_project_toast_progress(self, toast, toast_id, message: str, value) -> None:
         busy._on_project_toast_progress(self, toast, toast_id, message, value)
 

@@ -77,6 +77,7 @@ def write_project(owner: "MainWindowProjectIo", path: str) -> None:
     def _on_done(missing) -> None:
         owner.remember_project_path(path)
         owner._end_project_busy(toast, toast_id, saving, ok=True)
+        owner._notify_project_saved(path)
         if missing:
             owner._show_project_error(
                 owner._tr("menu.save_project", "Save Project"),
