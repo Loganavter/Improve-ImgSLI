@@ -21,13 +21,13 @@
             "name": "python3-Markdown",
             "buildsystem": "simple",
             "build-commands": [
-                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"Markdown==3.8.1\" --no-build-isolation"
+                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"Markdown==3.8\" --no-build-isolation"
             ],
             "sources": [
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/50/34/3d1ff0cb4843a33817d06800e9383a2b2a2df4d508e37f53a40e829905d9/markdown-3.8.1-py3-none-any.whl",
-                    "sha256": "46cc0c0f1e5211ab2e9d453582f0b28a1bfaf058a9f7d5c50386b99b588d8811"
+                    "url": "https://files.pythonhosted.org/packages/51/3f/afe76f8e2246ffbc867440cbcf90525264df0e658f8a5ca1f872b3f6192a/markdown-3.8-py3-none-any.whl",
+                    "sha256": "794a929b79c5af141ef5ab0f2f642d0f7b1872981250230e72682346f7cc90dc"
                 }
             ]
         },
@@ -35,13 +35,13 @@
             "name": "python3-pillow",
             "buildsystem": "simple",
             "build-commands": [
-                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"pillow==11.2.1\" --no-build-isolation"
+                "pip3 install --verbose --ignore-installed --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"pillow==12.1.1\" --no-build-isolation"
             ],
             "sources": [
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/af/cb/bb5c01fcd2a69335b86c22142b2bccfc3464087efb7fd382eee5ffc7fdf7/pillow-11.2.1.tar.gz",
-                    "sha256": "a64dd61998416367b7ef979b73d3a85853ba9bec4c2925f74e588879a58716b6"
+                    "url": "https://files.pythonhosted.org/packages/1f/42/5c74462b4fd957fcd7b13b04fb3205ff8349236ea74c7c375766d6c82288/pillow-12.1.1.tar.gz",
+                    "sha256": "9ad8fa5937ab05218e2b6a4cff30295ad35afd2f83ac592e68c0d871bb0fdbc4"
                 }
             ]
         },
@@ -341,8 +341,8 @@
                 },
                 {
                     "type": "file",
-                    "url": "https://files.pythonhosted.org/packages/af/cb/bb5c01fcd2a69335b86c22142b2bccfc3464087efb7fd382eee5ffc7fdf7/pillow-11.2.1.tar.gz",
-                    "sha256": "a64dd61998416367b7ef979b73d3a85853ba9bec4c2925f74e588879a58716b6"
+                    "url": "https://files.pythonhosted.org/packages/1f/42/5c74462b4fd957fcd7b13b04fb3205ff8349236ea74c7c375766d6c82288/pillow-12.1.1.tar.gz",
+                    "sha256": "9ad8fa5937ab05218e2b6a4cff30295ad35afd2f83ac592e68c0d871bb0fdbc4"
                 },
                 {
                     "type": "file",
