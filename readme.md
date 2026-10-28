@@ -16,7 +16,7 @@
 <p align="center">Read this in other languages: <a href="README.ru.md">Русский</a></p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/main/Improve_ImgSLI/screenshots/readme/image-compare.png" alt="Image Compare with the magnifier: a sharp source against the upscaled blocks">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/2.1.0/Improve_ImgSLI/screenshots/readme/image-compare.png" alt="Image Compare with the magnifier: a sharp source against the upscaled blocks">
 </p>
 
 ## What it is
@@ -27,7 +27,7 @@ Gallery for triaging, measuring and AI-scoring whole folders. Several workspaces
 stay open at once, and each tab keeps its own images, zoom and help.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/main/Improve_ImgSLI/screenshots/readme/session-picker.jpg" alt="Session picker with the three session types">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/2.1.0/Improve_ImgSLI/screenshots/readme/session-picker.jpg" alt="Session picker with the three session types">
 </p>
 
 ## Overview
@@ -47,7 +47,7 @@ quickly: local algorithms or an AI model over OpenRouter judge the shots, and th
 interface lets you move through the gallery without waiting.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/main/Improve_ImgSLI/screenshots/readme/ai-gallery.jpg" alt="AI Gallery with a folder of shots ranked in a grid">
+  <img src="https://raw.githubusercontent.com/Loganavter/media_archive/2.1.0/Improve_ImgSLI/screenshots/readme/ai-gallery.jpg" alt="AI Gallery with a folder of shots ranked in a grid">
 </p>
 
 **Multi Compare** is a convenient grid for comparing more than two images at
