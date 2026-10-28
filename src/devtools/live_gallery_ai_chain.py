@@ -437,13 +437,24 @@ def main(argv: list[str] | None = None) -> int:
             "run_was_active_when_it_fired": int(
                 (reset_info.get("state_before") or {}).get("metrics_cache_size") or 0
             ) > 0,
-            # "Reset metrics cache" DROPS the measured caches and THEN re-runs
-            # (the action's own docstring), so the pass is measured right after
-            # the click and the barrier is measured by what a pre-reset delivery
-            # could have written — never by "no work happened afterwards".
-            "clear_was_immediate": int(
+            # "Reset metrics cache" DROPS the measured caches for its SCOPE and
+            # then re-runs (the action documents two scopes: the card menu clears
+            # one card, the Find Action clears the selection, and the measured
+            # stores are swept pool-wide either way). So the clear is checked
+            # against the scope, and the barrier is measured by what a pre-reset
+            # delivery could still have written — never by "no work afterwards".
+            "cleared_the_selected_scope": int(
                 (reset_info.get("state_after") or {}).get("metrics_cache_size") or 0
-            ) == 0,
+            )
+            == max(
+                0,
+                int((reset_info.get("state_before") or {}).get("metrics_cache_size") or 0)
+                - int(
+                    reset_info.get("selection")
+                    if reset_info.get("via") == "run_action gallery.reset-metrics"
+                    else 1
+                ),
+            ),
             "pre_reset_delivery_was_dropped": bool(drop_after),
             "no_cache_file_written_after_reset": newest * 1000.0 < after_ms,
             "no_rank_after_reset": not [
