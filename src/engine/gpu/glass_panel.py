@@ -178,8 +178,11 @@ _SHADER_DIR = Path(__file__).resolve().parent / "shaders" / "glass_panel"
 
 _BLUR_UBUF_SIZE = 16  # std140: vec2 direction + float radiusPx + pad
 # std140: vec2 direction + float radiusPx + float cornerRadiusPx + vec4 tint
-# + vec2 panelSizePx + float borderWidthPx + float pad + vec4 borderColor
-# + vec4 debugTint
+# + vec2 panelSizePx + float borderWidthPx + float flipY + vec4 borderColor
+# + vec4 debugTint. `flipY` occupies what used to be the block's 4-byte pad
+# (offset 40), so the size and the "<20f" pack below are unchanged; it carries
+# the same bit glass_blur.frag consumes (widget_texture_needs_y_flip) and gates
+# this pass's DIRECTIONAL lighting only.
 _COMPOSITE_UBUF_SIZE = 80
 
 # IMGSLI_GLASS_PANEL_DEBUG_TINT=1: replaces each panel's composite output
@@ -766,7 +769,10 @@ class GlassPanelRenderer:
             # zooming. Flip sourceTopLeft only in that case (top-down backends
             # keep the original behavior), and tell glass_blur.frag via its
             # flipY uniform so the blur pass mirrors its sample V back into the
-            # panel's own coordinate space.
+            # panel's own coordinate space. The same bit also goes into
+            # glass_composite.frag's flipY slot (see _COMPOSITE_UBUF_SIZE) --
+            # same gate, second pass, so the panel's highlight/specular are
+            # resolved in that same panel space instead of the raster's.
             #
             # The decision itself belongs to the WIDGET_TEXTURE case of
             # engine/gpu/rt_y_orientation.py (single source of truth); do not
@@ -835,7 +841,13 @@ class GlassPanelRenderer:
                     float(device_size.width()),
                     float(device_size.height()),
                     spec.border_width_px,
-                    0.0,
+                    # flipY: the SAME per-backend bit the blur pass gets
+                    # (widget_texture_needs_y_flip, engine/gpu/rt_y_orientation.py's
+                    # WIDGET_TEXTURE case). glass_composite.frag gates its
+                    # directional lighting on it, so the panel's highlight and
+                    # rim specular follow the backdrop's top edge rather than
+                    # the raster's row order -- see that shader's panelY comment.
+                    1.0 if flip_y else 0.0,
                     b.redF(),
                     b.greenF(),
                     b.blueF(),
