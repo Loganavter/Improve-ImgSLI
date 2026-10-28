@@ -205,6 +205,52 @@ def folder_image_paths(folder: Path) -> list[Path]:
     ]
 
 
+#: Placement hint key each tab kind owns. ``drop_hint`` parses ``slot``/``side``
+#: as *tab-owned* context: Image Compare reads ``slot``, Multi Compare reads
+#: ``side``. A hint whose key the receiving tab does not own used to be forwarded
+#: and silently ignored (measured 2026-10-28: ``open_file(side="right",
+#: tab="image_compare")`` returned opened=true and put the file in the LEFT slot),
+#: which is exactly the "silently ignored drop" ``drop_hint``'s docstring rules
+#: out. Kinds that take no placement hint are simply absent from this table.
+HINT_KEY_BY_TAB: dict[str, str] = {
+    "image_compare": "slot",
+    "multi_compare": "side",
+}
+
+
+def check_hint_owner(hint: dict[str, Any] | None, kinds: Iterable[str]) -> None:
+    """Refuse a placement hint none of *kinds* owns; never forward it blindly.
+
+    ``kinds`` is the ordered set of tab kinds the request may reach (a forced
+    tab, or every accepting candidate). One hint per call, and it has to belong
+    to the tab that will read it — otherwise the caller believes it placed the
+    file where it asked while the tab lands it in its default slot.
+    """
+    if not hint:
+        return
+    (key,) = tuple(hint)  # ``drop_hint`` returns exactly one entry
+    owned_by = {
+        kind: HINT_KEY_BY_TAB.get(kind)
+        for kind in kinds
+        if HINT_KEY_BY_TAB.get(kind) is not None
+    }
+    if not owned_by:
+        raise ValueError(
+            f"{key}= is a placement hint, but no target tab reads it "
+            f"(tabs with a hint: {', '.join(sorted(HINT_KEY_BY_TAB)) or 'none'})"
+        )
+    if key in owned_by.values():
+        return
+    speak = ", ".join(
+        f"{kind} takes {owner}=" for kind, owner in sorted(owned_by.items())
+    )
+    raise ValueError(
+        f"{key}= is not a placement hint this target reads ({speak}); "
+        f"the file would have landed in the default slot while the answer said "
+        f"opened=true"
+    )
+
+
 def open_folder_into(
     folder: Path,
     wanted: str,
@@ -233,6 +279,7 @@ def open_folder_into(
         raise ValueError(
             f"unknown tab kind {wanted!r} (kinds: {', '.join(sorted(kinds))})"
         )
+    check_hint_owner(hint, [wanted])
     routed = route_paths(tabs(), [folder], only=wanted, hint=hint)
     if routed is None and not any(
         session_type == wanted for session_type, _tab in tabs()
@@ -295,6 +342,7 @@ def open_file_into(
     ordered = [wanted] if wanted is not None else [
         kind for kind in candidates if kind in known
     ]
+    check_hint_owner(hint, ordered)
     for kind in ordered:
         routed = route_paths(tabs(), [path], only=kind, hint=hint)
         if routed is None:
