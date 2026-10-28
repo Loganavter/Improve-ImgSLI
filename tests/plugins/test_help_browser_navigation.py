@@ -177,6 +177,50 @@ def test_help_toc_click_scrolls_the_host_scroll_area(qtbot, qapp):
     assert bar.value() > 0
 
 
+def test_help_toc_click_owns_the_scroll_over_its_own_focus_reveal(qtbot, qapp):
+    """The anchor scroll outranks the focus reveal the same click causes.
+
+    A real click hands the clicked TOC row focus (Qt's press →
+    ``setFocus(MouseFocusReason)``). A scroll area that follows focus then
+    reveals that row — the toolkit's primitive for it is ``_ensure_visible``
+    (``navigation_sections``), the exact call an ``AutoNavigationSection``
+    makes after moving focus. That reveal is a *consequence* of the click, so
+    it must not outrank the anchor the same click asked for: the host owns the
+    resulting scroll position. Order matters and is asserted here — click
+    (anchor applied) → reveal drags the bar back → the anchor re-assert lands
+    after the handoff and wins.
+    """
+    from PySide6.QtWidgets import QApplication
+    from sli_ui_toolkit.ui.managers.navigation_sections import _ensure_visible
+
+    dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
+    qtbot.addWidget(dialog)
+    dialog.resize(900, 900)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+    dialog.navigate_to("workspace.image_compare.magnifier")
+    qapp.processEvents()
+
+    anchor = dialog._toc._items[-1][0]
+    y = dialog._document.scroll_to_anchor(anchor)
+    assert y is not None and y > 0
+    bar = dialog._scroll.verticalScrollBar()
+    expected = max(bar.minimum(), min(dialog._document_scroll_target(y), bar.maximum()))
+    # The page must actually scroll, otherwise the reveal has nothing to fight.
+    assert expected > 0
+    bar.setValue(0)
+    qapp.processEvents()
+
+    row = dialog._toc._rows[-1]
+    qtbot.mouseClick(row, Qt.MouseButton.LeftButton)
+    # The handoff is real: the clicked row owns focus right after the press.
+    assert QApplication.focusWidget() is row
+    _ensure_visible(row)  # the reveal that handoff causes
+    qapp.processEvents()  # the anchor re-assert lands after it
+
+    assert bar.value() == expected
+
+
 def test_help_figure_click_opens_the_host_lightbox(qtbot, qapp):
     """Image click surfaces the toolkit lightbox from the host, not ``Text``."""
     dialog = HelpDialog(current_language="en", app_name="Improve-ImgSLI")
