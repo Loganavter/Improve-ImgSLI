@@ -25,7 +25,7 @@
     <ul>
       <li>Record a comparison session and edit it in the built-in video editor — timeline selection, trimming, preview playback and export; a disk thumbnail cache keeps the strip responsive.</li>
       <li>Export the full-resolution comparison with overlays, labels and the comparison state preserved, so the exported file matches what was on screen.</li>
-      <li>An MCP server ships with the app: a local stdio server with 23 tools for UI inventory, actions, state, logs, traces, screenshots, keystrokes and jobs, so an agent can drive and inspect a running instance.</li>
+      <li>An MCP server ships with the app: a local stdio server with 31 tools for UI inventory, actions, state, logs, traces, screenshots, keystrokes and jobs, so an agent can drive and inspect a running instance.</li>
       <li>Keyboard navigation reaches the whole app — tabs, dialogs, lists, the canvas, the video editor and the sliders; arrows navigate, Enter edits a value, Esc reverts, and shortcuts are remappable.</li>
       <li>Contextual F1 help, illustrated topics and Learn more from every action in Find Action; a global Interface Scale resizes the entire UI from 0.5 to 2.5.</li>
     </ul>
@@ -40,24 +40,16 @@
   <launchable type="desktop-id">io.github.Loganavter.Improve-ImgSLI.desktop</launchable>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_1.jpg</image>
-      <caption>A magnifier reads the pixels under the split</caption>
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.1.0/Improve_ImgSLI/screenshots/readme/ai-gallery.jpg</image>
+      <caption>A folder of shots, grouped into series and ranked by measured quality</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_2.jpg</image>
-      <caption>Difference view: what actually changed</caption>
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.1.0/Improve_ImgSLI/screenshots/readme/session-picker.jpg</image>
+      <caption>Pick a workspace: Image Compare, AI Gallery or Multi Compare</caption>
     </screenshot>
-    <screenshot>
-      <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_3.jpg</image>
-      <caption>Multi Compare: any number of sources in one grid</caption>
-    </screenshot>
-    <screenshot>
-      <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_4.jpg</image>
-      <caption>Pick a workspace: Image Compare, Multi Compare or Image Gallery</caption>
-    </screenshot>
-    <screenshot>
-      <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_5.jpg</image>
-      <caption>Trim a recorded comparison in the video editor</caption>
+    <screenshot xml:lang="ru">
+      <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.1.0/Improve_ImgSLI/screenshots/readme/image-compare.png</image>
+      <caption>Лупа: источник и блоки апскейла</caption>
     </screenshot>
   </screenshots>
   <developer id="io.github.loganavter">
