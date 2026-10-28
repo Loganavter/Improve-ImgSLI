@@ -335,6 +335,10 @@ class HelpDialog(ThemedDialog):
         self._syncing_sidebar = False
         self._search_mode = False
         self._mouse_nav_filter: _HelpMouseNavFilter | None = None
+        #: Bumped whenever the host scrolls the content to a position the user
+        #: asked for; deferred focus restores scheduled by an earlier render
+        #: compare against it and retire instead of revealing a row over it.
+        self._content_scroll_generation = 0
 
         title = tr("help.help", language=current_language)
         self.setWindowTitle(title)
@@ -1064,10 +1068,20 @@ class HelpDialog(ThemedDialog):
                 QTimer.singleShot(0, lambda a=anchor: self._scroll_to_anchor(a))
 
         defer_dialog_geometry(self, self._apply_dialog_geometry)
-        QTimer.singleShot(0, self._restore_focus_after_window_change)
-        QTimer.singleShot(60, self._restore_focus_after_window_change)
+        # Both deferred restores belong to THIS render: they must retire
+        # themselves if the content gets scrolled before they fire (see
+        # ``_scroll_to_document_y``), otherwise the 60 ms one focuses the
+        # first content row and the scroll area reveals it — over a TOC
+        # anchor scroll the user asked for in between.
+        generation = self._content_scroll_generation
+        QTimer.singleShot(
+            0, lambda: self._restore_focus_after_window_change(generation)
+        )
+        QTimer.singleShot(
+            60, lambda: self._restore_focus_after_window_change(generation)
+        )
 
-    def _restore_focus_after_window_change(self) -> None:
+    def _restore_focus_after_window_change(self, generation: int | None = None) -> None:
         """Декларативный рестейт фокуса после перестройки hub/document.
 
         Заменяет 116-строчный императивный обход с ручным findChildren-сортировкой
@@ -1075,6 +1089,13 @@ class HelpDialog(ThemedDialog):
         Идея как в Settings: секции уже зарегистрированы (help-sidebar/help-content),
         их AutoNavigationSection._auto_rows() уже сканирует StrongFocus + сортировку.
         """
+        if generation is not None and generation != self._content_scroll_generation:
+            # The host moved the content (TOC row, in-page anchor, search hit)
+            # after this restore was scheduled. The user's scroll owns the
+            # content: re-focusing a content row here would reveal it through
+            # the scroll area and drag the bar off the anchor (measured: TOC
+            # click -> 1150, this deferred restore -> 8).
+            return
         try:
             from shiboken6 import isValid
             from PySide6.QtWidgets import QApplication
@@ -1204,7 +1225,14 @@ class HelpDialog(ThemedDialog):
         return max(0, content_y)
 
     def _scroll_to_document_y(self, y: int) -> None:
-        """Scroll the outer area so document-space ``y`` lands at the top."""
+        """Scroll the outer area so document-space ``y`` lands at the top.
+
+        Scrolling the content is the host's decision, so it also retires the
+        deferred focus restores of the render that preceded it: a restore's
+        ``focus_first`` reveals its row through this same scroll area and
+        would otherwise undo the scroll the user just asked for.
+        """
+        self._content_scroll_generation += 1
         bar = self._scroll.verticalScrollBar()
         bar.setValue(self._document_scroll_target(y))
 
@@ -1212,6 +1240,24 @@ class HelpDialog(ThemedDialog):
         # ``Text.scroll_to_anchor`` returns a widget-space y (the old host
         # returned a QWidget for ``ensureWidgetVisible`` — that contract is
         # gone by design; the host scroll area owns scrolling).
+        y = self._document.scroll_to_anchor(anchor)
+        if y is None:
+            return
+        self._scroll_to_document_y(y)
+        # The same click that asked for this anchor also handed focus to the
+        # TOC row it hit, so a focus-reveal may follow it inside this very
+        # turn. The anchor owns the outcome: re-assert it once on the next
+        # event-loop turn, after that focus handoff (same ordering rule as
+        # the guard in ``_focus_help_container``).
+        QTimer.singleShot(0, lambda a=anchor: self._reassert_anchor_scroll(a))
+
+    def _reassert_anchor_scroll(self, anchor: str) -> None:
+        """Re-apply ``anchor`` once, after the click's focus handoff.
+
+        Re-resolves the anchor rather than replaying a cached value: the page
+        may have been re-rendered in the meantime, and a gone anchor is a
+        no-op instead of a scroll into stale geometry.
+        """
         y = self._document.scroll_to_anchor(anchor)
         if y is not None:
             self._scroll_to_document_y(y)
