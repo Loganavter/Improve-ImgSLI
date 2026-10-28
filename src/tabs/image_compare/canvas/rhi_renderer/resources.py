@@ -22,7 +22,8 @@ from engine.gpu.array_draw import (
     unpack_instance_layer2,
 )
 from engine.gpu.mip_cascade import MipCascadeGenerator
-from engine.cache.tile_texture_service import DEFAULT_MAX_ARRAY_SIZE, TileTextureService
+from engine.gpu.array_budget import plan_array_capacity
+from engine.cache.tile_texture_service import TileTextureService
 
 from ..texture_parts.tile_geometry import _TILE_APRON_PX
 from ..texture_parts.upload_queue import (
@@ -31,7 +32,7 @@ from ..texture_parts.upload_queue import (
 )
 from ._debug import rhi_render_debug
 from .array_resources import ArrayResources
-from .residency import _TILE_CACHE_BUDGET_BYTES, TileResidencyRealizer
+from .residency import TileResidencyRealizer
 
 _SHADER_DIR = Path(__file__).resolve().parent.parent / "shaders"
 # Clamped to the backend's real max at construction time (see initialize())
@@ -46,7 +47,6 @@ from engine.cache.tile_constants import LIVE_TILE_EXTENT as _LIVE_TILE_EXTENT
 # padding is never sampled because the shader always scales UV by each
 # tile's own content-scale (contentPx / this size) before sampling.
 _ARRAY_LAYER_PX = _LIVE_TILE_EXTENT + 2 * _TILE_APRON_PX
-_ARRAY_LAYER_BYTES = _ARRAY_LAYER_PX * _ARRAY_LAYER_PX * 4
 # A flat floor here (an earlier version of this constant used a bare "12")
 # can't actually guarantee anything: the real requirement scales with how
 # many LIVE_TILE_EXTENT tiles can be visible on screen at once, which
@@ -69,21 +69,16 @@ _ARRAY_LAYER_BYTES = _ARRAY_LAYER_PX * _ARRAY_LAYER_PX * 4
 # always samples image1/image2 even in diff-only draw modes).
 _MAX_EXPECTED_CANVAS_PX = 4096
 _MAX_TILES_PER_AXIS = -(-(2 * _MAX_EXPECTED_CANVAS_PX) // _LIVE_TILE_EXTENT) + 1
-# Capped at DEFAULT_MAX_ARRAY_SIZE (the measured cross-backend
-# TextureArraySizeMax -- see tile-array-atlas-plan.md Phase 0/1, and
-# TileTextureService's _TileSlotAllocator, which is what actually decides
-# when to open a new array): a single QRhiTextureArray can't exceed the
-# backend's real layer limit regardless of how big the byte budget or
-# canvas-size bound below computes to, and _TileSlotAllocator already opens
-# additional arrays past this cap instead of overflowing one array, so
-# growing past it here would only reserve GPU memory for layers this array
-# could never actually use.
-_ARRAY_CAPACITY = min(
-    DEFAULT_MAX_ARRAY_SIZE,
-    max(
-        3 * _MAX_TILES_PER_AXIS * _MAX_TILES_PER_AXIS,
-        _TILE_CACHE_BUDGET_BYTES // _ARRAY_LAYER_BYTES,
-    ),
+# The per-array byte cap, the backend layer limit and this visible-tile demand
+# floor are engine policy (engine.gpu.array_budget): a texture array allocates
+# every layer up front, so a budget-sized array (the old 2 GiB derivation asked
+# for 2032 layers / ~2.9 GB with mips) is refused by integrated GPUs and the
+# canvas goes black. `ArrayResources` verifies the allocation and shrinks if a
+# driver still refuses it. The times-3 floor stays: the array SRB binds
+# `tile_arrays[0]` only, so what does not fit in one array is not drawn.
+_ARRAY_CAPACITY = plan_array_capacity(
+    layer_px=_ARRAY_LAYER_PX,
+    demand_layers=3 * _MAX_TILES_PER_AXIS * _MAX_TILES_PER_AXIS,
 )
 # The per-instance vertex layout (stride/fmt/attributes) now lives in the
 # shared engine core ``engine.gpu.array_draw`` and is re-exported at the top

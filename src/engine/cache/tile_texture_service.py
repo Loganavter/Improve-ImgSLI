@@ -53,6 +53,33 @@ class _TileSlotAllocator:
         self._next_layer_in_current_array = 0
         self._array_count = 1
 
+    @property
+    def max_array_size(self) -> int:
+        return self._max_array_size
+
+    def max_live_layer(self) -> int:
+        """Highest layer index currently handed out, or -1 when empty."""
+        return max((layer for _, layer in self._slot_for_key.values()), default=-1)
+
+    def set_max_array_size(self, size: int) -> bool:
+        """Follow the verified array capacity (see ``ArrayResources``).
+
+        Refused (returns False) while a live slot sits at or above the new
+        cap: silently dropping it would alias two tiles onto one layer on the
+        next allocate. Shrinking only happens on the first array creation, when
+        no slot exists yet, so this is a tripwire rather than a normal path.
+        """
+        wanted = max(1, int(size))
+        if wanted == self._max_array_size:
+            return False
+        if self.max_live_layer() >= wanted:
+            return False
+        self._max_array_size = wanted
+        self._next_layer_in_current_array = min(
+            self._next_layer_in_current_array, wanted
+        )
+        return True
+
     def slot_for(self, key: object) -> TileSlot | None:
         return self._slot_for_key.get(key)
 
@@ -178,6 +205,17 @@ class TileTextureService:
         # loupe's low-res sampling source -- survives upload-budget pressure
         # from finer levels filling in around it.
         self._pinned: set[object] = set()
+
+    def set_max_array_size(self, size: int) -> bool:
+        """Follow a capacity the GPU owner verified (see ``ArrayResources``).
+
+        The array SRB binds ``tile_arrays[0]`` only, so the allocator must
+        never hand out a layer the created array cannot address -- exactly the
+        drift ``tests/contracts/test_capacity_agreement.py`` exists to catch.
+        The owner of the array calls this when a too-large planned allocation
+        was refused and a smaller one adopted.
+        """
+        return self._slot_allocator.set_max_array_size(size)
 
     def register_source(
         self, source_id: object, image_size: tuple[int, int]

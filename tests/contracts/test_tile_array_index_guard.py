@@ -5,8 +5,8 @@ never falls back to sampling layer 0 as a "blank" diff.
 Why (docs/dev/rendering/tile-rendering-system.md, tile-array-atlas-plan.md):
 ``array_resources.ensure_array_srb`` binds only ``tile_arrays[0]`` while
 ``TileTextureService.slot_for`` can return ``(array_index >= 1, layer)`` once
-the array-0 layer budget (2032 layers, sized so the 2 GiB budget can roll
-over) is exceeded. The fragment shader addresses a layer inside the *bound*
+the array-0 layer budget (867 layers in Image Compare, sized so one bound
+array holds the worst-case visible set) is exceeded. The fragment shader addresses a layer inside the *bound*
 array, so an item carrying ``array_index >= 1`` is uploaded into
 ``tile_arrays[1]`` but drawn from ``tile_arrays[0]`` at the same layer index --
 another tile's content. Multi Compare drops such items itself

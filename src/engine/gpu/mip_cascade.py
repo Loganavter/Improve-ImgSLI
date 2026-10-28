@@ -115,20 +115,28 @@ def _load_mip_downsample_shader(name: str) -> QShader:
 
 
 class MipCascadeNotReady(RuntimeError):
-    """The downsample pipeline could not be built *yet* -- transient.
+    """The downsample pipeline could not be built *yet*.
 
     Raised by ``_ensure_downsample_pipeline`` when the probe render target's
-    create() comes back False on a first attempt. Live evidence (2026-10-17,
-    private Xvfb, OpenGL on LLVMpipe): the first one-to-two tiled frames
-    after a store swap hit it, a later attempt in the same session succeeds,
-    and the QL preview keeps rendering from its raster plate throughout.
+    create() comes back False. Two measured causes:
 
-    So callers must treat it as "not ready this frame": keep whatever plate
-    is up, ask for another frame, retry when it comes. Tearing the bind down
-    (or spinning at full rate) would turn a one-frame miss into a stuck
-    preview. The message carries the probe's identity (attempt counter,
-    array/level/backend) because a bare ``False`` from create() has no facts
-    to diagnose with -- a future root-cause pass needs exactly these.
+    * transient (2026-10-17, private Xvfb, OpenGL on LLVMpipe): the first
+      one-to-two tiled frames after a store swap hit it and a later attempt in
+      the same session succeeded;
+    * permanent (2026-10-28, integrated Intel + Mesa): ``tile_arrays[0]`` was
+      created at 2032 layers (~2.9 GB with mips), Mesa returned True from
+      ``create()`` without backing the texture, so *every* attempt failed with
+      ``GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT`` -- retrying could never recover.
+      That class is now prevented upstream: ``ArrayResources`` verifies the
+      allocation and shrinks it (``engine/gpu/array_budget.py``), and the
+      capacity is reported to the slot allocator.
+
+    Callers must still treat the typed condition as "not ready this frame":
+    keep whatever plate is up, ask for another frame, retry when it comes.
+    Tearing the bind down (or spinning at full rate) would turn a one-frame
+    miss into a stuck preview. The message carries the probe's identity
+    (attempt counter, array/level/backend) because a bare ``False`` from
+    create() has no facts to diagnose with.
     """
 
     def __init__(self, message: str, *, attempt: int = 0, details: str = "") -> None:

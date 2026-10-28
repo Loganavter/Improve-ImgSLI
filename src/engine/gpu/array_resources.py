@@ -14,12 +14,15 @@ GPU resources those decisions get realized against.
 
 from __future__ import annotations
 
+# Audit-Meta: pattern=state-machine size=exempt reason="one tile-array GPU-resource lifecycle (create/verify/shrink/upload/SRB cache); the allocation-verification half shares the capacity field with the upload guard, so splitting it out would duplicate the state the 2026-10-28 black-canvas fix exists to keep single"
+
 import logging
 from typing import Callable, Sequence
 
 from PySide6.QtCore import QSize
 from PySide6.QtGui import (
     QRhiBuffer,
+    QRhiColorAttachment,
     QRhiGraphicsPipeline,
     QRhiShaderResourceBinding,
     QRhi,
@@ -27,6 +30,7 @@ from PySide6.QtGui import (
     QRhiShaderResourceBindings,
     QRhiShaderStage,
     QRhiTexture,
+    QRhiTextureRenderTargetDescription,
     QRhiTextureSubresourceUploadDescription,
     QRhiTextureUploadDescription,
     QShader,
@@ -38,6 +42,11 @@ from PySide6.QtGui import (
 
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from engine.cache.tile_texture_service import TileTextureService
+from engine.gpu.array_budget import (
+    remember_capacity,
+    remembered_capacity,
+    shrink_capacity,
+)
 from core.log_names import APP_LOGGER_NAME
 
 logger = logging.getLogger(APP_LOGGER_NAME)
@@ -76,6 +85,16 @@ class TileArrayResourcesBase:
         self._load_shader = load_shader
         self._layer_px = layer_px
         self._array_capacity = array_capacity
+        #: Called with the verified capacity when the driver refused the
+        #: planned allocation (see ``_create_verified_array``). Whoever owns
+        #: the slot allocator must follow it, or that allocator keeps handing
+        #: out layers this array cannot address.
+        self._on_capacity_changed: Callable[[int], None] | None = None
+        #: Seam for tests: the test double has no real ``QRhiTexture`` to
+        #: attach, so it substitutes a predicate over the created texture.
+        self._probe_array_target: Callable[[QRhiTexture], bool] = (
+            self._array_target_usable
+        )
         self._name_prefix = name_prefix
         self._instance_stride = instance_stride
         self._uniform_block_size = uniform_block_size
@@ -106,6 +125,15 @@ class TileArrayResourcesBase:
         rhi = self._rhi_getter()
         assert rhi is not None
         return rhi
+
+    @property
+    def array_capacity(self) -> int:
+        """Layers the bound array was actually created with (post-verify)."""
+        return self._array_capacity
+
+    def set_capacity_sink(self, sink: Callable[[int], None] | None) -> None:
+        """Register who must follow a shrunk capacity (the slot allocator)."""
+        self._on_capacity_changed = sink
 
     def release(self) -> None:
         resources = [
@@ -321,19 +349,120 @@ class TileArrayResourcesBase:
 
     def _ensure_tile_array(self, array_index: int) -> None:
         while len(self.tile_arrays) <= array_index:
+            self.tile_arrays.append(self._create_verified_array(len(self.tile_arrays)))
+
+    def _create_verified_array(self, index: int) -> QRhiTexture:
+        """Create one tile array, shrinking until the driver can back it.
+
+        ``create()`` alone is not proof of a usable texture: on Mesa a
+        too-large array returns True with no storage, and every render target
+        attached to it then fails ``GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT`` --
+        which is what made the Image Compare mip probe uncreatable and the
+        canvas black (2026-10-28, integrated Intel + `tile_arrays[0]` at 2032
+        layers / ~2.9 GB). So the allocation is verified with a throwaway
+        level-0 target, and a refused size is halved before anything uses it.
+        """
+        capacity = remembered_capacity(
+            self._backend_name(), self._layer_px, self._array_capacity
+        )
+        while True:
             texture = self.rhi.newTextureArray(
                 QRhiTexture.Format.RGBA8,
-                self._array_capacity,
+                capacity,
                 QSize(self._layer_px, self._layer_px),
                 1,
                 QRhiTexture.Flag.MipMapped | QRhiTexture.Flag.UsedWithGenerateMips,
             )
-            texture.setName(
-                f"{self._name_prefix}-tile-array-{len(self.tile_arrays)}".encode()
+            texture.setName(f"{self._name_prefix}-tile-array-{index}".encode())
+            created = bool(texture.create())
+            if created and self._probe_array_target(texture):
+                if capacity != self._array_capacity:
+                    self._adopt_capacity(capacity)
+                return texture
+            try:
+                texture.destroy()
+            except RuntimeError:
+                pass
+            smaller = shrink_capacity(capacity)
+            if smaller >= capacity:
+                raise RuntimeError(
+                    f"Failed to create {self._name_prefix} tile array texture "
+                    f"even at {capacity} layers "
+                    f"({self._layer_px}x{self._layer_px} RGBA8, "
+                    f"created={created})"
+                )
+            logger.warning(
+                "[TileArray] %s array of %d layers is not usable on this "
+                "backend (%dx%d RGBA8, created=%s) -- retrying with %d",
+                self._name_prefix,
+                capacity,
+                self._layer_px,
+                self._layer_px,
+                created,
+                smaller,
             )
-            if not texture.create():
-                raise RuntimeError(f"Failed to create {self._name_prefix} tile array texture")
-            self.tile_arrays.append(texture)
+            capacity = smaller
+
+    def _backend_name(self) -> str:
+        try:
+            return str(self.rhi.backendName() or "")
+        except Exception:
+            return ""
+
+    def _array_target_usable(self, texture: QRhiTexture) -> bool:
+        """Whether a render target can actually attach to ``texture``.
+
+        Fail-open when this RHI/binding offers no render-target factory (test
+        doubles, stripped builds) or the probe itself raises: verification is a
+        safety net, never a new hard requirement for rendering.
+        """
+        factory = getattr(self.rhi, "newTextureRenderTarget", None)
+        if factory is None:
+            return True
+        target = None
+        rpdesc = None
+        try:
+            attachment = QRhiColorAttachment(texture)
+            attachment.setLayer(0)
+            attachment.setLevel(0)
+            target = factory(QRhiTextureRenderTargetDescription(attachment))
+            rpdesc = target.newCompatibleRenderPassDescriptor()
+            target.setRenderPassDescriptor(rpdesc)
+            return bool(target.create())
+        except Exception:
+            logger.exception("[TileArray] array usability probe raised; assuming usable")
+            return True
+        finally:
+            for resource in (target, rpdesc):
+                if resource is None:
+                    continue
+                try:
+                    resource.destroy()
+                except RuntimeError:
+                    pass
+
+    def _adopt_capacity(self, capacity: int) -> None:
+        """Publish the verified capacity and let the allocator follow it."""
+        previous = self._array_capacity
+        self._array_capacity = capacity
+        remember_capacity(self._backend_name(), self._layer_px, capacity)
+        logger.warning(
+            "[TileArray] %s array capacity %d -> %d layers: the driver refused "
+            "the larger allocation (%dx%d RGBA8). Coarse residency past the new "
+            "cap will be dropped until the canvas shrinks; Vulkan does not have "
+            "this limit.",
+            self._name_prefix,
+            previous,
+            capacity,
+            self._layer_px,
+            self._layer_px,
+        )
+        sink = self._on_capacity_changed
+        if sink is not None:
+            try:
+                sink(capacity)
+            except Exception:
+                logger.exception("[TileArray] capacity sink failed")
 
     def _ensure_array_uniform_buffer(self) -> None:
         if self.array_uniform_buffer is not None:

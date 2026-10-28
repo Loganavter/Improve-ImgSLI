@@ -29,11 +29,11 @@ from engine.gpu.base_images_pass import (
     slot_tile_host_key as _engine_slot_tile_host_key,
 )
 from engine.gpu.mip_cascade import MipCascadeGenerator
+from engine.gpu.array_budget import plan_array_capacity
 from engine.cache.render_debug import rhi_render_debug
 from engine.frame.context import make_ids
 from engine.cache.tile_debug import log_tile_event, tile_dump_enabled
 from engine.cache.tile_geometry import _TILE_APRON_PX
-from engine.cache.tile_texture_service import DEFAULT_MAX_ARRAY_SIZE
 from tabs.multi_compare.scene.projection import letterbox_uv
 from tabs.multi_compare.scene.resources import (
     FULLSCREEN_VERTICES,
@@ -70,19 +70,17 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 # into the top-left corner of a layer this size; the shader always rescales
 # UV by each tile's own content-scale before sampling.
 _ARRAY_LAYER_PX = SLOT_LIVE_TILE_EXTENT + 2 * _TILE_APRON_PX
-_ARRAY_LAYER_BYTES = _ARRAY_LAYER_PX * _ARRAY_LAYER_PX * 4
-# Bounds how many layers one array texture should pre-size for -- see
-# image_compare resources.py's identical derivation. _MAX_EXPECTED_CANVAS_PX
-# bounds one 4K-ish monitor; multi_compare has no image1/image2/diff
-# multiplier since there's no cross-image pairing here.
+# Bounds how many layers one array texture should pre-size for. The per-array
+# byte cap and the backend limit are engine policy (engine.gpu.array_budget) --
+# an array is one allocation, so it must stay small enough for an integrated
+# GPU to back it; ArrayResources verifies the result and shrinks if the driver
+# still refuses. _MAX_EXPECTED_CANVAS_PX bounds one 4K-ish monitor; multi_compare
+# has no image1/image2/diff multiplier since there's no cross-image pairing here.
 _MAX_EXPECTED_CANVAS_PX = 4096
 _MAX_TILES_PER_AXIS = -(-(2 * _MAX_EXPECTED_CANVAS_PX) // SLOT_LIVE_TILE_EXTENT) + 1
-_ARRAY_CAPACITY = min(
-    DEFAULT_MAX_ARRAY_SIZE,
-    max(
-        _MAX_TILES_PER_AXIS * _MAX_TILES_PER_AXIS,
-        SLOT_TILE_CACHE_BUDGET_BYTES // _ARRAY_LAYER_BYTES,
-    ),
+_ARRAY_CAPACITY = plan_array_capacity(
+    layer_px=_ARRAY_LAYER_PX,
+    demand_layers=_MAX_TILES_PER_AXIS * _MAX_TILES_PER_AXIS,
 )
 
 #: Multi compare's tile policy -- the lean end of the matrix. No LOD settle
@@ -432,6 +430,7 @@ class BaseImagesPass(CanvasRenderPass):
             array_capacity=_ARRAY_CAPACITY,
             name_prefix="multi-compare",
         )
+        self.array_resources.set_capacity_sink(renderer.tile_service.set_max_array_size)
         self._mip_cascade = MipCascadeGenerator(
             rhi_getter=lambda: self._renderer.rhi if self._renderer else None,
             tile_arrays=self.array_resources.tile_arrays,

@@ -75,7 +75,7 @@ def test_image_compare_policy_matches_matrix():
     assert policy.pin_coarsest is True
     assert policy.tile_budget_bytes == 2 * 1024**3
     assert policy.host_cache_budget_bytes == 3 * 1024**3
-    assert policy.array_capacity == 2032
+    assert policy.array_capacity == 867
 
 
 def test_multi_compare_policy_matches_matrix():
@@ -108,9 +108,7 @@ def test_engine_view_policy_opts_into_no_atomic_transition():
     assert policy.host_cache_budget_bytes == _const(
         HOST_TEXTURE_CACHE, "DEFAULT_HOST_TEXTURE_CACHE_BUDGET_BYTES"
     )
-    assert policy.array_capacity == _const(
-        "engine.cache.tile_texture_service", "DEFAULT_MAX_ARRAY_SIZE"
-    )
+    assert policy.array_capacity == 508
 
 
 def test_all_three_surfaces_use_the_one_policy_type():

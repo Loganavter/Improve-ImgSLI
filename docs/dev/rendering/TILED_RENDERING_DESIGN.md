@@ -113,7 +113,7 @@ Where its policy lives:
 
 Knobs it sets: 100 ms LOD fetch settle, atomic content swap / LOD level change /
 hires flip (`ic/use_cases/fallback.py:66`), first-paint hold, coarsest-LOD pin,
-2 GiB GPU tile budget, 3 GiB host texture cache, derived array capacity (2032
+2 GiB GPU tile budget, 3 GiB host texture cache, derived array capacity (867
 layers).
 
 Hardening the others lack: the **first-paint atomic hold** (no partial plan on
@@ -199,7 +199,7 @@ than three renderers passing their own `atomic=` expression.
 | Coarsest-LOD pin | yes | **none** | **none** | `ic/use_cases/tile_residency.py:320` → `tile_texture_service.py:497` |
 | GPU tile budget | 2 GiB | 512 MiB | 2 GiB | `tiled_image_view.py:112` (IC imports it: `ic/residency.py:43`, used `:329`); `mc/scene/resources.py:56`; `tiled_image_view.py:426` |
 | Host texture cache budget | 3 GiB | 512 MiB | **none** (crops from the store) | `host_texture_cache.py:14` via `ic/residency.py:905`; `mc/scene/resources.py:57` → `mc/base_images.py:388` |
-| Array capacity (layers/array) | 2032 (derived) | 508 (derived) | 2048 (flat cap) | `ic/resources.py:81`; `mc/base_images.py:78`; `tiled_image_view.py:107` |
+| Array capacity (layers/array) | 867 (visible-tile floor) | 508 (512 MiB cap) | 508 (512 MiB cap) | `engine/gpu/array_budget.py:52` via `ic/resources.py:81`; `mc/base_images.py:78`; `tiled_image_view.py:107` |
 | Array-index guard | shared engine emission (`build_compare_pair_plan`) + upload bound (`upload_tile_to_array`) | same, plus a defensive `array_index != 0` drop in its instance builder | relies on array capacity; resolves `(array_index, layer)` per tile and discards the index | `mc/base_images.py:754`; `tiled_image_view.py:1048`, `:1212` |
 | Upload count budget | 64 / key / call | 64 / key / call | 64 / key / call | `tile_constants.py:60`, `residency.py:147` |
 | Upload time budget | 12.0 ms / call | 12.0 ms / call | 12.0 ms / call | `tile_constants.py:80`, `src/engine/cache/tile_upload_budget.py:41` |
@@ -208,19 +208,29 @@ than three renderers passing their own `atomic=` expression.
 | Apron | 1 px | 1 px | 1 px | `tile_constants.py:40` |
 | First-frame present gate | 10 presents | 10 presents | its own cover settle | `first_frame_gate.py:20`; `src/tabs/image_gallery/ui/quick_look/preview_canvas_host/cover.py:347` |
 
-Capacity derivations (both compare tabs compute, they do not hardcode):
+Capacity derivation lives in the engine (`engine/gpu/array_budget.py`), not in
+the tabs; each tab supplies only its visible-tile demand:
 
-- Image Compare, `ic/resources.py:81`: `min(DEFAULT_MAX_ARRAY_SIZE,
-  max(3 × tiles_per_axis², tile_budget // layer_bytes))` with
-  `_MAX_EXPECTED_CANVAS_PX = 4096` (`:70`), `_ARRAY_LAYER_PX = 512 + 2×1 = 514`
-  (`:48`) → `tiles_per_axis = ceil(2×4096/512) + 1 = 17`, `layer_bytes = 1 056 784`,
-  `2 GiB // layer_bytes = 2032`, so `min(2048, max(867, 2032)) = 2032`. The ×3 is
-  image1 + image2 + diff.
-- Multi Compare, `mc/base_images.py:78`: same shape without the ×3 →
-  `max(289, 512 MiB // layer_bytes = 508)` → 508.
-- Quick Look, `tiled_image_view.py:107`: `DEFAULT_MAX_ARRAY_SIZE`
-  (`tile_texture_service.py:21`) verbatim — no canvas or byte clamp, so its
-  array can pre-size 2048 layers.
+- `plan_array_capacity(layer_px, demand_layers)` = `min(DEFAULT_MAX_ARRAY_SIZE,
+  max(demand_layers, 512 MiB // layer_bytes))`, with `DEFAULT_MAX_ARRAY_SIZE =
+  2048` (backend layer limit) and `_ARRAY_LAYER_PX = 512 + 2×1 = 514`
+  (`layer_bytes = 1 056 784`), so the byte cap alone allows 508 layers.
+- Image Compare, `ic/resources.py:81`: demand is `3 × tiles_per_axis²` with
+  `_MAX_EXPECTED_CANVAS_PX = 4096` (`:70`) → `tiles_per_axis =
+  ceil(2×4096/512) + 1 = 17` → **867** (image1 + image2 + diff) beats the cap.
+- Multi Compare, `mc/base_images.py:78`: no cross-image pairing →
+  `max(289, 508)` → **508**.
+- Quick Look, `tiled_image_view.py:107`: no canvas bound → the byte cap, **508**.
+
+The byte cap exists because a texture array is ONE allocation: the previous
+budget-sized derivation asked for 2032 layers (~2.9 GB with mips), which
+integrated GPUs refuse *silently* (`create()` returns True, every attached
+render target is `GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT`, Image Compare's mip
+probe goes `MipCascadeNotReady` and the canvas stays black — 2026-10-28).
+`ArrayResources` therefore verifies each created array with a throwaway
+level-0 target, halves the size on refusal, and reports the adopted capacity
+to the slot allocator; the result is remembered per backend so a canvas rebuild
+does not retry the refused size.
 
 Read the matrix as a to-do list, not a scoreboard. The coarsest pin and the LOD
 settle are the two knobs with the clearest one-consumer-only story: both were
