@@ -10,8 +10,9 @@ Type=Application
 # one real inconsistency between the two desktop files (owner decision 2026-10-28).
 Categories=Graphics;Photography;
 MimeType=application/vnd.blinktable.project+zip;application/x-improve-imgsli;
-# StartupWMClass stays on the pre-rename value on purpose: the app sets
-# RESOURCE_NAME=improve-imgsli (src/__main__.py:116), so this is its real
-# WM_CLASS regardless of how the package/executable is named.
-StartupWMClass=improve-imgsli
+# StartupWMClass must equal the app's real WM_CLASS: src/__main__.py sets
+# RESOURCE_NAME=blinktable and setDesktopFileName("blinktable") since 2026-10-28
+# (before that the pair was the pre-rename `improve-imgsli` on both sides —
+# renaming one side alone breaks taskbar grouping).
+StartupWMClass=blinktable
 StartupNotify=true

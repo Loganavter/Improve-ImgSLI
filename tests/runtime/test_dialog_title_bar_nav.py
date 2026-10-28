@@ -192,21 +192,6 @@ def _assert_title_bar_navigation(
     qtbot.waitUntil(lambda: _is_closed(dialog), timeout=3000)
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason=(
-        "KNOWN DEFECT, quarantined 2026-10-28 (precedent #788). On a CI runner "
-        "Up from the help dialog's first row resolves to the CONTENT section "
-        "instead of the title bar: measured chain 'Button -> HelpHubPage -> "
-        "QWidget -> QWidget -> SurfaceScrollArea', in_bar=False, with the window "
-        "ACTIVE and dialog=(896,636) — the same size where the local run walks "
-        "'Button -> WindowControlsCluster -> CustomTitleBar'. So the page's "
-        "section geometrically wins the 'above' resolution on that layout: an "
-        "up-navigation defect in the product, not a test artefact. The assertion "
-        "prints chain/in_bar/bar_visible/active_window/sections, so an XPASS or a "
-        "different chain stays readable."
-    ),
-)
 def test_help_dialog_title_bar_is_navigable(qapp, qtbot):
     from plugins.help.dialog import HelpDialog
 
