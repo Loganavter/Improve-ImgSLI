@@ -53,7 +53,16 @@ def _folder(tmp_path: Path) -> Path:
 
 
 class _HintTab:
-    """Tab stand-in that understands the hint (its own ``handle_drop(paths, hint)``)."""
+    """Tab stand-in that understands the hint (its own ``handle_drop(paths, hint)``).
+
+    It declares ``drop_hint_key`` exactly like ``TabContract`` does, because the
+    host now asks the tab which placement key it reads instead of keeping a table
+    of tab names in ``core/`` (platform-isolation contract).
+    """
+
+    #: Mirrors ``TabContract.drop_hint_key`` — the host asks the tab which
+    #: placement key it reads. Tests that stand in for Multi Compare override it.
+    drop_hint_key: str | None = "slot"
 
     def __init__(self, *, folders: bool = False) -> None:
         self.folders = folders
@@ -68,6 +77,12 @@ class _HintTab:
     def handle_drop(self, paths, hint=None) -> bool:
         self.dropped.append((list(paths), hint))
         return True
+
+
+class _SideHintTab(_HintTab):
+    """Multi Compare's shape: reads ``side=``."""
+
+    drop_hint_key = "side"
 
 
 class _PathsOnlyTab:
@@ -90,7 +105,7 @@ class _PathsOnlyTab:
 
 
 def test_route_paths_forwards_the_hint_to_the_tab(tmp_path) -> None:
-    tab = _HintTab()
+    tab = _SideHintTab()
     files = [tmp_path / "a.png"]
 
     assert (
@@ -123,7 +138,7 @@ def test_route_paths_still_feeds_a_tab_without_a_hint_parameter(tmp_path) -> Non
 
 def test_open_folder_into_forwards_the_hint_to_the_expanded_files(tmp_path) -> None:
     folder = _folder(tmp_path)
-    tab = _HintTab()
+    tab = _SideHintTab()
 
     result = drop_routing.open_folder_into(
         folder,
@@ -221,7 +236,7 @@ def test_open_folder_rejects_slot_and_side_together(tmp_path) -> None:
 )
 def test_open_folder_hands_the_hint_to_the_tab(tmp_path, tab_kind, params, expected) -> None:
     folder = _folder(tmp_path)
-    tab = _HintTab()
+    tab = (_SideHintTab if tab_kind == "multi_compare" else _HintTab)()
     handlers = _handlers((tab_kind, tab))
 
     result = handlers.open_folder({"path": str(folder), "tab": tab_kind, **params})
@@ -238,7 +253,10 @@ def test_open_folder_hands_the_hint_to_the_tab(tmp_path, tab_kind, params, expec
 def test_open_folder_auto_route_also_carries_the_hint(tmp_path) -> None:
     """No ``tab=``: the auto-route still passes the hint to the tab it lands on."""
     folder = _folder(tmp_path)
-    tab = _HintTab(folders=True)  # folder-native: takes the directory itself
+    tab = _HintTab(
+        folders=True,  # folder-native: takes the directory itself
+        # no hint key: this tab reads no placement hint, like image_gallery does
+    )
     handlers = _handlers(("image_gallery", tab))
 
     result = handlers.open_folder({"path": str(folder), "slot": 2})
@@ -272,7 +290,7 @@ def test_open_file_hands_the_hint_to_the_tab(tmp_path, tab_kind, params, expecte
     land in slot 1 again, which is the whole bug this contract removes.
     """
     image = _image(tmp_path)
-    tab = _HintTab()
+    tab = (_SideHintTab if tab_kind == "multi_compare" else _HintTab)()
     handlers = _handlers((tab_kind, tab))
 
     result = handlers.open_file({"path": str(image), "tab": tab_kind, **params})

@@ -84,6 +84,7 @@ class ImageCompareTab(TabContract):
     def display_name(self) -> str:
         return "Image Compare"
 
+
     @property
     def icon(self) -> QIcon | None:
         from tabs.image_compare.icons import Icon, get_icon
@@ -493,6 +494,9 @@ class ImageCompareTab(TabContract):
         apply_image_canvas_appearance(host_window, canvas_owner=self._widget)
         if self._widget is not None and self._widget.isVisible():
             self._widget.reapply_button_styles()
+
+    #: The control surface drops into this tab with ``slot=`` only.
+    drop_hint_key = "slot"
 
     def dispose(self) -> None:
         if self._widget is not None:

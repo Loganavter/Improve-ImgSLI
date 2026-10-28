@@ -72,6 +72,15 @@ class TabContract(ABC):
         """
         return self.display_name
 
+    #: Placement-hint key this tab reads on a drop (``"slot"`` / ``"side"``).
+    #:
+    #: A *class* attribute on purpose: the control surface must be able to ask
+    #: "does this tab read this hint?" without touching a widget (the sync-boundary
+    #: contract forbids widget I/O on that path), and the answer has to live with
+    #: the tab, not in a table of tab names inside ``core/`` (platform isolation).
+    #: ``None`` = the tab takes no placement hint.
+    drop_hint_key: str | None = None
+
     @property
     def icon(self) -> QIcon | None:
         """Optional icon for the new-session menu."""
