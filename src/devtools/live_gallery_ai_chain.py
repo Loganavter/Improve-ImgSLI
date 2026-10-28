@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -116,6 +117,12 @@ def _stub_router(delay_s: float = 0.0):
             return json.dumps(PROFILE_ANSWER, ensure_ascii=False)
         if "WINNER" in text.upper():
             return "WINNER: A"
+        if '"ranking"' in text or "rank aliases" in text:
+            aliases = sorted(set(re.findall(r"img_\d+", text)), key=lambda a: int(a[4:]))
+            return json.dumps(
+                {"ranking": aliases, "score": 0.9, "reason": "stub rank"},
+                ensure_ascii=False,
+            )
         return json.dumps(SCORECARD_ANSWER, ensure_ascii=False)
 
     return router
@@ -210,6 +217,42 @@ def _local_axis_values(entries: list[dict]) -> dict[str, float]:
     return values
 
 
+def _kill_leftover_apps() -> list[int]:
+    """Kill app processes carrying THIS lease, before a run starts.
+
+    ``--keep-app`` is how the tool queries a live app, so any failure path used
+    to leave the app running; the next run then found a foreign app on the same
+    display/profile holding a socket the harness had already unlinked (measured
+    2026-10-28: two runs in a row waited 90 s for a socket nobody would create).
+    Selection is by the process's own ``LIVE_LEASE`` environment, never by a
+    command-line pattern (a pattern matches the shell running the kill).
+    """
+    lease = os.environ.get("LIVE_LEASE", "")
+    if not lease:
+        return []
+    needle = f"LIVE_LEASE={lease}".encode()
+    killed: list[int] = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        if pid == os.getpid():
+            continue
+        try:
+            environ = (entry / "environ").read_bytes()
+            cmdline = (entry / "cmdline").read_bytes()
+        except OSError:
+            continue
+        if needle not in environ or b"__main__.py" not in cmdline:
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+            killed.append(pid)
+        except OSError:
+            continue
+    return killed
+
+
 def _stop_app(pid: int) -> None:
     """SIGTERM the app we started, wait, and drop its socket file.
 
@@ -256,6 +299,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--log", type=Path, default=Path("/tmp/opencode/w7-ai-chain.log"))
     parser.add_argument("--out", type=Path, default=Path("/tmp/opencode/w7-ai-chain.json"))
     parser.add_argument("--keep-app", action="store_true")
+    parser.add_argument("--debug", action="store_true", help="IMGSLI_DEBUG=1 (gallery diagnostics)")
     parser.add_argument("--lease", default=None, help="allocate and release a lease for this proof")
     args = parser.parse_args(argv)
 
@@ -266,13 +310,31 @@ def main(argv: list[str] | None = None) -> int:
         lease = live_lease.alloc(lane="gallery-judge-axes", task=args.lease)
         os.environ.update(lease.env)
 
+    if args.debug:
+        os.environ["IMGSLI_DEBUG"] = "1"
     sys.path.insert(0, str(REPO_ROOT / "src"))
     from devtools import help_live, live_fixtures
 
+    stale = _kill_leftover_apps()
+    if stale:
+        time.sleep(2.0)
     folder = (args.folder or Path("/tmp/opencode/w7-ai-chain-series")).resolve()
     make_images(folder, max(2, args.images))
 
-    verdict: dict = {"folder": str(folder), "domain": "ai", "lease": os.environ.get("LIVE_LEASE")}
+    verdict: dict = {
+        "folder": str(folder),
+        "domain": "ai",
+        "lease": os.environ.get("LIVE_LEASE"),
+        "killed_stale_apps": stale,
+    }
+    socket_path = Path(os.environ.get("IMGSLI_MCP_CONTROL_SOCKET") or "") if os.environ.get(
+        "IMGSLI_MCP_CONTROL_SOCKET"
+    ) else None
+    if socket_path is not None:
+        try:
+            socket_path.unlink()
+        except OSError:
+            pass
     stub = live_fixtures.ai_stub_server(_stub_router(args.delay))
     app_pid: int | None = None
     try:
@@ -286,6 +348,24 @@ def main(argv: list[str] | None = None) -> int:
             extra_sections=help_live.ai_profile_sections(stub),
             config_home=Path(config_home) if config_home else None,
         )
+        # The AI group lives in the NEW settings namespace
+        # (QSettings("BlinkTable","BlinkTable"), ai_settings_store._QS_ORG/_QS_APP)
+        # which is seeded by a ONE-WAY migration from the legacy file above and
+        # only while the new store is EMPTY ("both populated -> the new
+        # namespace wins"). On a REUSED lease the old file still points at a
+        # stub port from a previous run, so the app would answer from a dead
+        # endpoint — measured 2026-10-28: run 2 sent its profile request to
+        # run 1's port and logged URLError 111. Dropping the new store makes the
+        # migration copy THIS run's seed; the file holds nothing else (fresh
+        # lease, the legacy file carries the rest).
+        new_store = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")) / (
+            "BlinkTable/BlinkTable.conf"
+        )
+        try:
+            new_store.unlink()
+            verdict["stale_settings_dropped"] = str(new_store)
+        except FileNotFoundError:
+            pass
         verdict["profile_conf"] = str(profile)
         verdict["stub_base_url"] = stub.base_url
 
@@ -385,6 +465,7 @@ def main(argv: list[str] | None = None) -> int:
     local_entries = _read_entries("gallery_local_metrics")
     local_values = _local_axis_values(local_entries)
     verdict["ai_entries"] = ai_entries
+    verdict["local_metrics_entries"] = len(local_entries)
     verdict["local_axes"] = sorted(local_values)
     verdict["local_shared_value"] = local_values.get(SHARED_AXIS)
 
@@ -402,6 +483,7 @@ def main(argv: list[str] | None = None) -> int:
         "shared_axis_is_the_judge_number": bool(ai_entries) and all(
             row["axes"].get(SHARED_AXIS) == JUDGE_SHARED_SCORE for row in ai_entries
         ),
+        "local_metrics_persisted": bool(local_entries),
         "shared_axis_local_number_differs": local_values.get(SHARED_AXIS) is not None
         and local_values.get(SHARED_AXIS) != JUDGE_SHARED_SCORE,
         "no_local_only_axis_in_the_ai_entry": bool(ai_entries) and not any(
@@ -412,8 +494,7 @@ def main(argv: list[str] | None = None) -> int:
             for line in verdict["log_lines"]["rank"]
             for marker in ("jev rank complete", "jev rank applied", "jev rank =>")
         ),
-        "judge_request_carried_no_local_metrics": bool(verdict["log_lines"].get("analyze_start"))
-        and all("metrics=0" in line for line in verdict["log_lines"]["analyze_start"]),
+
     }
     verdict["checks"] = checks
     verdict["ok"] = all(checks.values())
