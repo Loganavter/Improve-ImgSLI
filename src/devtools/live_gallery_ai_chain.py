@@ -201,6 +201,31 @@ def main(argv: list[str] | None = None) -> int:
                         # palette had ZERO ``gallery.*`` ids and this path was
                         # unreachable, which is why the card menu was the only
                         # drive available.
+                        #
+                        # Ctrl+A FIRST: ``reset_metrics`` deliberately refuses to
+                        # widen an EMPTY scope to the whole pool
+                        # (use_cases/gallery_actions.py), and Ctrl+A selects what
+                        # is visible — the drive a user performs. Measured
+                        # 2026-10-28: without it the action "ran" and cleared
+                        # nothing (metrics_cache_size 6 -> 6).
+                        try:
+                            # Focus first: Ctrl+A selects what the GRID shows, so
+                            # a click into the grid is part of the drive (an
+                            # unlaid-out/unfocused grid refuses, by design).
+                            card = [
+                                row for row in (control_now.call("ui_elements").get("elements") or [])
+                                if row.get("role") == "card" and row.get("label") == "Button"
+                            ]
+                            if card:
+                                control_now.call("ui_click", id=card[0]["id"])
+                            control_now.call("press_keys", keys="Ctrl+A")
+                        except Exception as exc:  # noqa: BLE001 - reported, not fatal
+                            reset_info["select_all_error"] = f"{type(exc).__name__}: {exc}"
+                        time.sleep(0.4)
+                        reset_info["selection"] = (
+                            control_now.call("get_state", path="tabs.image_gallery").get("state")
+                            or {}
+                        ).get("selection_count")
                         control_now.call("run_action", action_id="gallery.reset-metrics")
                         reset_info["via"] = "run_action gallery.reset-metrics"
                         time.sleep(0.5)
