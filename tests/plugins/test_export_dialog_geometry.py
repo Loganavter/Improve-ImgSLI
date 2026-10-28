@@ -1,10 +1,12 @@
 """Export dialog preview geometry fallback (regression: undefined ``export_geo``).
 
-``ExportDialog._apply_preview_pixmap`` resolves the scale target in three steps:
-the label's live size, then its minimum size, then the design-px floor from
-``plugins.export.layout_geometry``. That third step referenced ``export_geo``,
-which ``dialog.py`` never imported (ruff F821), so any path that emptied both
-the size and the minimum raised ``NameError`` instead of scaling.
+The preview pane resolves its scale target in three steps: the label's live
+size, then its minimum size, then the design-px floor from
+``plugins.export.layout_geometry`` (``preview_pane.ExportPreviewLabel.preview_target_rect``;
+it lived in ``ExportDialog._apply_preview_pixmap`` before the pane started
+stretching its source in ``paintEvent``). That third step referenced
+``export_geo``, which ``dialog.py`` never imported (ruff F821), so any path that
+emptied both the size and the minimum raised ``NameError`` instead of scaling.
 
 The floor is the documented source of truth (``docs/dev/DIALOGS.md`` — read the
 design px through the call-time resolver, never a copied constant), so the fix
@@ -77,9 +79,16 @@ def test_preview_falls_back_to_geometry_floor(qapp):
 
         dialog._apply_preview_pixmap()
 
-        pixmap = dialog.preview_label.pixmap()
-        assert not pixmap.isNull()
-        assert pixmap.size() == QSize(width, height)
+        # The pane paints the source itself; the resolved target is the
+        # observable now (a QLabel pixmap would mean a per-resize rebake).
+        target = dialog.preview_label.preview_target_rect()
+        assert not target.isEmpty()
+        assert target.size() == QSize(width, height)
+        assert dialog.preview_label.baked_preview_size() == QSize(width, height)
+        assert dialog.preview_label.pixmap().isNull(), (
+            "the preview must stretch its source in paintEvent, not rebake a "
+            "QPixmap into the label"
+        )
     finally:
         dialog.deleteLater()
 
@@ -105,8 +114,9 @@ def test_preview_uses_live_label_size_when_available(qapp):
 
         dialog._apply_preview_pixmap()
 
-        pixmap = dialog.preview_label.pixmap()
-        assert not pixmap.isNull()
-        assert pixmap.size() == smaller
+        target = dialog.preview_label.preview_target_rect()
+        assert not target.isEmpty()
+        assert target.size() == smaller
+        assert dialog.preview_label.baked_preview_size() == smaller
     finally:
         dialog.deleteLater()

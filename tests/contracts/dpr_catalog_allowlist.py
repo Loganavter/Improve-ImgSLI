@@ -85,13 +85,6 @@ DPR_ALLOWLIST: dict[tuple[str, str, str], str] = {
         "hardening is one line (mirror the gallery sibling's "
         "setDevicePixelRatio(...)) -- see FINDING in the wave's DONE.md"
     ),
-    ("src/plugins/export/dialog.py", "_apply_preview_pixmap", "ratio-dropped-on-copy"): (
-        "the preview source is either PIL-derived (QImage->QPixmap, ratio 1.0) "
-        "or a caller pixmap whose scaled copy keeps its ratio (measured on "
-        "6.11.2: QPixmap.scaled preserves devicePixelRatio) while this composed "
-        "frame is 1.0. Latent, and it is a LABEL preview that Qt scales, not an "
-        "exported raster -- see FINDING in the wave's DONE.md"
-    ),
     ("src/ui/main_window/runtime.py", "_build_rhi_resize_shield_pixmap", "ratio-dropped-on-copy"): (
         "a SOLID-COLOUR resize shield, not a copy of pixels: rhi.size() is "
         "logical and that is what the widget paints the shield at, so a flat "
