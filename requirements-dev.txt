@@ -3,4 +3,7 @@ pytest-sugar>=1.0,<2
 pytest-qt>=4.4,<5
 pytest-randomly>=3.15,<4
 pytest-xdist>=3.6,<4
+# Turn a hung Qt test into a failure instead of a stuck run (policy:
+# docs/dev/TESTING.md § Tiers step 3 — merge/nightly runs).
+pytest-timeout>=2.3,<3
 mypy>=1.10

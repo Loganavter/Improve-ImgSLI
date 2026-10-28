@@ -15,12 +15,91 @@ pytest -k divider                        # all tests whose name contains divider
 pytest tests/runtime/test_event_bus_depth.py::test_circular_chain_stops_at_max_depth
 ```
 
-## Tiers (fast PR vs full nightly)
+## Tiers: which slice to run when
+
+The full suite is **10 562 tests, ~9 min** (measured 2026-10-27); the contract
+tier alone is **~2:18** (same measurement). Running all of it for a one-module
+edit is the wrong default — but running *nothing* is worse. The rule is: **the
+smaller the blast radius you can prove, the smaller the run you may skip.**
+
+### 1. Tier markers (by location, not by hand)
+
+`pytest.ini` registers one marker per test folder; the **root `conftest.py`**
+attaches it in `pytest_collection_modifyitems` from the table `TIER_MARKERS`.
+No per-file `pytestmark` — a new test inherits its tier from the folder it is
+created in, and a moved file cannot keep a stale marker.
+
+| Path | Marker | Command |
+|---|---|---|
+| `tests/contracts/` | `contracts` | `pytest tests/contracts -m contracts` |
+| `tests/devtools/` | `devtools` | `pytest tests/devtools -m devtools` |
+| `tests/plugins/` | `plugins` | `pytest tests/plugins -m plugins` |
+| `tests/runtime/` | `runtime` | `pytest tests/runtime -m runtime` |
+| `tests/render/` | `render` | `pytest tests/render -m render` |
+| `tests/ui/` | `ui` | `pytest tests/ui -m ui` |
+| `tests/video/` | `video` | `pytest tests/video -m video` |
+| `tests/target_bug/` | `target_bug` | `pytest tests/target_bug -m target_bug` |
+| `src/tabs/**/tests/**` | `tabs` | `pytest src/tabs -m tabs` |
+
+Files directly under `tests/` (`test_*.py` app-shell modules) and helpers carry
+**no** tier marker on purpose: no folder owns them and they must not be claimed
+by a neighbour's marker — they belong to the full run. `qt` stays owned by
+`pytest-qt`; `slow`/`flaky` stay per-file (below).
+
+### 2. Affected tests from the import graph — `tools/test_affected.py`
+
+The tier markers bound a *folder*; they do not answer "which tests import the
+file I just edited". `tools/test_affected.py` does, from the import graph
+(`ast`, no imports executed, no plugins, no network, ~4 s over 2.5k modules):
+
+```bash
+python3 tools/test_affected.py src/tabs/image_gallery/services/folder_scanner.py
+python3 tools/test_affected.py --since origin/main            # git diff --name-only
+python3 tools/test_affected.py --since origin/main --explain   # + the import chain
+python3 tools/test_affected.py --depth 1 <module>              # direct importers only
+```
+
+Output contract: one repo-relative test path per line, sorted; `--explain` adds
+an indented `why: a.py -> b.py -> test.py` chain per test. Exit codes:
+
+| Code | Meaning |
+|---|---|
+| `0` | the printed list is the affected set (may be empty; skips are explained on stderr) |
+| `2` | **full tier required** — stdout starts with `full-tier:` (fail-closed) |
+| `1` | usage / `git` error |
+
+Fail-closed set (a change here means "run everything", never a short list):
+`src/core/**`, `src/engine/**`, `src/shared/**`, `src/main*.py`,
+`src/__main__.py`, **any** `conftest.py`, `pytest.ini`, `requirements*.txt`,
+`tests/helpers/**`, `tests/fixtures/**`, and the tool itself. Changes under
+`docs/**` and `src/tabs/*/docs/**` map to
+`tests/devtools/test_docs_link_graph.py` by an explicit path rule (that test
+reads the docs as text; nothing imports them).
+
+Known limits, stated rather than hidden: dynamic imports
+(`importlib.import_module("x")`) and string references are invisible to `ast`;
+non-Python resources with no path rule print a `note:` and contribute nothing.
+
+### 3. Policy — what to run for what
+
+| Moment | Run | Why this and not more |
+|---|---|---|
+| Edit inside one module / one tab | `python3 tools/test_affected.py <files>`; if exit 2 or the list looks wrong, the tab folder instead: `pytest src/tabs/<tab>/tests -q` | The graph bounds it to tests that actually import the changed module (2 hops up). |
+| Before `git push` (pre-push) | `tools/test_affected.py --since origin/main` **plus** `pytest tests/contracts -q` | Contracts are the architectural gate: a feature that violates a dogma goes red here, and a subset run would not see it (~2:18, cheap next to the 9-min full run). |
+| Merge / pre-merge (supervisor) | `pytest -n auto -q` (full, parallel) | Cross-cutting breakage lives in suites the import graph cannot see (Qt plugin/fixture discovery, session order, `slow` whole-tree scans). One parallel full run ≈ the local merge-readiness signal; CI is the async backstop. |
+| Nightly / release | `pytest -q` + `pytest -m "slow" -q` separately, and the toolkit pair | Nightly wants the unparallelized signal (order + timing flakiness) and the slow scans measured on their own; release additionally pins the sibling toolkit commit. |
+
+`-n auto` needs `pytest-xdist` (already in `requirements-dev.txt`);
+`pytest-timeout` is pinned there too so a hung Qt test becomes a failure
+instead of a stuck run. `QT_QPA_PLATFORM=offscreen` and
+`PYTHONDONTWRITEBYTECODE=1` belong in every headless/agent command.
+
+### 4. Duration markers (unchanged by the tier table)
 
 Markers are registered in `pytest.ini` (`slow`, `flaky`). Its one `addopts`
 is `--randomly-seed=20261021`: `pytest-randomly` stays on (order bugs still
 surface) but the shuffled order — and therefore the failure set — is
-reproducible. Tiers are opt-in via `-m`:
+reproducible. Duration tiers are opt-in via `-m`:
 
 ```bash
 pytest tests -m "not slow" -n auto -q     # fast tier: everything except the
@@ -34,7 +113,11 @@ pytest -m "slow" -q                       # slow scans only
 upload-queue, geometry, fullscreen, capability-ids, store-mutation,
 draw-plan-math, widget-ownership, settings-persistence, activation,
 viewport-slots). A new test that scans all of `src/` and exceeds ~20 s
-must carry the mark.
+must carry the mark. It is deliberately **not** derived from a path table:
+duration is a property of what a test does, and the local timing journal
+(`.git/test-journal.jsonl`) is untracked per checkout, so there is nothing
+for the tier table to read on a fresh clone.
+
 
 ### Quarantine (`flaky`)
 
@@ -128,7 +211,9 @@ toolkit, not the external library's public API.
 
 The repository uses a minimal `pytest.ini` (marker registration +
 `faulthandler_timeout` + the pinned `--randomly-seed` described above) —
-discovery follows pytest defaults.
+discovery follows pytest defaults. Tier markers are attached by the root
+`conftest.py` from the path table `TIER_MARKERS` (it does nothing else);
+`tools/test_affected.py` is the import-graph selector described in § Tiers.
 
 ## Layout
 
@@ -151,7 +236,7 @@ instantiates a concrete tab as an example. Folder structure details —
 | `tests/render/` | Shared composition/render-plan behavior, not tied to a specific tab. | Fake-context |
 | `tests/plugins/` | Plugin behavior (`src/plugins/*`) not owned by one tab: settings, help, clipboard, workspace chrome. | Unit/integration |
 | `tests/devtools/` | Developer tooling: docs link graph, UI-inspector wiring, capture-surface/help-figure gates, control-surface (MCP) routing, launcher checks. | Mixed |
-| `tests/*.py` (top level) | App-shell mechanics with no subfolder of their own: navigation manager/coverage, context menu, flyout fade, session state. | Unit/integration |
+| `tests/*.py` (top level) | App-shell mechanics with no subfolder of their own: navigation manager/coverage, context menu, flyout fade, session state. No tier marker (see § Tiers). | Unit/integration |
 | `tests/{video,ui,target_bug}/`, `tests/helpers/` | Remnants and support: `video/` keeps one module (the video suite moved to the image_compare tab), `ui/` one dialog-layer test, `target_bug/` one regression, `helpers/` importable fixtures (no `test_*.py`). | Mixed |
 | `src/tabs/image_compare/tests/{contracts,render,runtime,plugins,video}/` | Everything specific to image_compare (canvas features, magnifier, divider, video editor). | Mixed — see [tabs/isolation.md](tabs/isolation.md) |
 | `src/tabs/multi_compare/tests/{contracts,render,runtime,plugins}/` | Everything specific to multi_compare (composition, dividers, labels, context menu). | Mixed — see [tabs/isolation.md](tabs/isolation.md) |
