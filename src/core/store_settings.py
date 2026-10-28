@@ -50,7 +50,6 @@ class SettingsState:
     export_comment_text: str = ""
     export_comment_keep_default: bool = False
     export_resolution_scale: float = 1.0
-    export_suppress_untested_resolution_warning: bool = False
 
     window_width: int = 1024
     window_height: int = 768

@@ -525,9 +525,6 @@ class SettingsManager:
         s.export_comment_keep_default = self._get_setting(
             "export_comment_keep_default", False, bool
         )
-        s.export_suppress_untested_resolution_warning = self._get_setting(
-            "export_suppress_untested_resolution_warning", False, bool
-        )
         s.export_video_favorite_dir = self._get_setting(
             "export_video_favorite_dir", None, str
         )
@@ -671,10 +668,6 @@ class SettingsManager:
         self._save_setting("export_comment_text", s.export_comment_text)
         self._save_setting(
             "export_comment_keep_default", s.export_comment_keep_default
-        )
-        self._save_setting(
-            "export_suppress_untested_resolution_warning",
-            s.export_suppress_untested_resolution_warning,
         )
         self._save_setting("export_video_favorite_dir", s.export_video_favorite_dir)
         self._save_setting("export_video_container", s.export_video_container)

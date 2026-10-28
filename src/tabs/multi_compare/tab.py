@@ -144,7 +144,6 @@ class MultiCompareTab(TabContract):
             self._widget,
             store=context.store,
             translate=context._tr,
-            dialog_parent=context.main_window or page,
             open_export_dialog=open_export_dialog,
             context=context,
         )

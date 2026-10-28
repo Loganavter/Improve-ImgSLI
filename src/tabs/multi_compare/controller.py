@@ -55,14 +55,12 @@ class MultiCompareController:
         store: Any = None,
         *,
         translate=None,
-        dialog_parent=None,
         open_export_dialog=None,
         context=None,
     ):
         self.widget = widget
         self.store = store
         self.translate = translate or (lambda _key, default=None: default or _key)
-        self.dialog_parent = dialog_parent or widget
         # Host service (``open_image_export_dialog``). Returns at once with the
         # live dialog — it is non-modal, so callers must pass
         # ``on_finished=`` and continue the export there (see

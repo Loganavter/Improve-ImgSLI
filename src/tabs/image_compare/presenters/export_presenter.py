@@ -79,26 +79,6 @@ class ExportPresenter(QObject):
     def _tr(self, text):
         return tr(text, self.store.settings.current_language)
 
-    def _tr_export(self, key: str, default: str | None = None) -> str:
-        text = self._tr(key)
-        if not text or text == key:
-            return default or key
-        return text
-
-    def _untested_export_suppressed(self) -> bool:
-        from shared.export_warning_state import is_untested_export_suppressed
-
-        return is_untested_export_suppressed(getattr(self.store, "settings", None))
-
-    def _suppress_untested_export_warning(self) -> None:
-        from shared.export_warning_state import set_untested_export_suppressed
-
-        set_untested_export_suppressed(
-            getattr(self.store, "settings", None),
-            getattr(self.main_controller, "settings_manager", None),
-            True,
-        )
-
     def shutdown(self) -> None:
         try:
             self.cancel_all_exports()
@@ -191,27 +171,13 @@ class ExportPresenter(QObject):
         The export dialog is non-modal (it used to be ``exec()``-ed), so the
         export starts here, from its ``finished`` handler, with exactly the
         options the user accepted. ``code != Accepted`` means cancel: nothing
-        is written and no untested-resolution prompt is shown.
+        is written.
         """
         if int(result_code) != int(QDialog.DialogCode.Accepted):
             return
 
         try:
             if not self.save_flow.validate_export_options(export_opts):
-                return
-
-            from shared.untested_export_resolution import (
-                confirm_untested_export_resolution,
-            )
-
-            if not confirm_untested_export_resolution(
-                self.main_window_app,
-                int(export_opts.get("width") or 0),
-                int(export_opts.get("height") or 0),
-                translate=self._tr_export,
-                suppressed=self._untested_export_suppressed(),
-                on_suppress=self._suppress_untested_export_warning,
-            ):
                 return
 
             self.save_flow.start_save_worker(
@@ -258,19 +224,6 @@ class ExportPresenter(QObject):
             export_opts = self.state.build_quick_export_options()
             if not save_ctx.virtual_canvas_active:
                 export_opts["fill_background"] = False
-            from shared.untested_export_resolution import (
-                confirm_untested_export_resolution,
-            )
-
-            if not confirm_untested_export_resolution(
-                self.main_window_app,
-                int(export_opts.get("width") or 0),
-                int(export_opts.get("height") or 0),
-                translate=self._tr_export,
-                suppressed=self._untested_export_suppressed(),
-                on_suppress=self._suppress_untested_export_warning,
-            ):
-                return
 
             self.save_flow.start_save_worker(
                 save_ctx=save_ctx,

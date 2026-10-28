@@ -13,7 +13,6 @@ A grade é salva como uma única imagem, e a sessão mantém a grade, então ela
 - **Resultado** — a imagem salva mostra a grade como ela aparece na tela.
 - **Crop** — o recorte de cada slot é aplicado antes de os slots serem combinados.
 - **Slots vazios** — slots sem imagem ficam de fora da imagem salva.
-- **Exportações grandes** — se o lado maior tiver mais de 16384 px, um aviso pergunta se deve continuar, porque tamanhos maiores não foram testados e a exportação pode falhar ou ficar sem memória. **Cancelar** interrompe a exportação; **Não mostrar novamente** desativa o aviso para exportações futuras.
 
 :::figure{side=block width=100%}
 ![Diálogo Salvar grade](../assets/export_save_dialog.png)

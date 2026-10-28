@@ -303,8 +303,8 @@ class ImageComparePrimitivesFactory:
             variant="surface",
             background_color=accent_color,
             parent=parent,
-            # quick_save() can synchronously pop a modal
-            # confirm-untested-resolution dialog -- ripple must finish first.
+            # quick_save() starts the export, so the ripple still has to
+            # settle first (the button must not look pressed after the click).
             defer_click=DEFER_CLICK_AWAIT_RIPPLE,
         )
         target.btn_magnifier_orientation = ScrollValueButton(

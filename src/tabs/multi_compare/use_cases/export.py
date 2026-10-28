@@ -58,22 +58,6 @@ def background_color_from_settings(settings) -> QColor:
     return QColor(*channels)
 
 
-def untested_export_suppressed(controller) -> bool:
-    from shared.export_warning_state import is_untested_export_suppressed
-
-    return is_untested_export_suppressed(getattr(controller.store, "settings", None))
-
-
-def suppress_untested_export_warning(controller) -> None:
-    from shared.export_warning_state import set_untested_export_suppressed
-
-    main_window = getattr(controller.context, "main_window", None) if controller.context else None
-    manager = getattr(main_window, "settings_manager", None) if main_window else None
-    set_untested_export_suppressed(
-        getattr(controller.store, "settings", None), manager, True
-    )
-
-
 def persist_export_preferences(controller, options: dict) -> None:
     settings = getattr(controller.store, "settings", None)
     if settings is None:
@@ -463,19 +447,6 @@ def on_quick_save_requested(controller) -> None:
         return
     try:
         options = build_quick_export_options(controller)
-        from shared.untested_export_resolution import (
-            confirm_untested_export_resolution,
-        )
-
-        if not confirm_untested_export_resolution(
-            controller.dialog_parent,
-            int(options["width"]),
-            int(options["height"]),
-            translate=controller.translate,
-            suppressed=untested_export_suppressed(controller),
-            on_suppress=lambda: suppress_untested_export_warning(controller),
-        ):
-            return
         image = controller._compose_image(
             int(options["width"]),
             int(options["height"]),
@@ -592,19 +563,6 @@ def start_composite_save(controller, result_code, options: dict) -> None:
     if int(result_code) != int(QDialog.DialogCode.Accepted):
         return
     try:
-        from shared.untested_export_resolution import (
-            confirm_untested_export_resolution,
-        )
-
-        if not confirm_untested_export_resolution(
-            controller.dialog_parent,
-            int(options["width"]),
-            int(options["height"]),
-            translate=controller.translate,
-            suppressed=untested_export_suppressed(controller),
-            on_suppress=lambda: suppress_untested_export_warning(controller),
-        ):
-            return
         image = controller._compose_image(
             int(options["width"]),
             int(options["height"]),
