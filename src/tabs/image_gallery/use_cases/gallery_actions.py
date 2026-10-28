@@ -22,6 +22,8 @@ from tabs.image_gallery.use_cases.action_context import (
     REFUSAL_EMPTY_SCOPE,
     REFUSAL_NO_HANDLER,
     REFUSAL_NO_ITEMS,
+    REFUSAL_NO_PROFILE,
+    REFUSAL_NOT_CONFIGURED,
     ActionContext,
     Refusal,
 )
@@ -183,6 +185,30 @@ def menu_action_handlers(
         if refusal is not None:
             log.debug("%s refused: %s (%s)", what, refusal.reason, refusal.detail)
 
+    def _surface_refusal(what: str, refusal) -> None:
+        """Make an AI-domain refusal VISIBLE — a DEBUG line is not a report.
+
+        Live 2026-10-28: ``analyze refused: no_profile`` was the whole symptom.
+        The menu closed, the card stayed as it was, and the reason existed only
+        in ``log.txt`` at DEBUG level — the owner's own words were "по UX это
+        тоже не узнать". The gallery already has an error language for this
+        domain (``AnalysisStatus.ERROR`` + ``analysis_error``, painted by the
+        controller's ``_mark_ai_profile_error``), so the refusal reaches it
+        instead of dying in a trace, and the plain log line goes to WARNING: a
+        paid backend that cannot run is never a trace detail.
+        """
+        reason = str(getattr(refusal, "reason", "") or "")
+        if reason not in (REFUSAL_NO_PROFILE, REFUSAL_NOT_CONFIGURED):
+            return
+        detail = str(getattr(refusal, "detail", "") or "") or reason
+        log.warning("%s refused: %s (%s)", what, reason, detail)
+        mark = getattr(owner, "_mark_ai_profile_error", None)
+        if callable(mark):
+            try:
+                mark(detail)
+            except Exception:
+                pass
+
     def _analyze() -> None:
         try:
             if callable(on_analyze):
@@ -191,10 +217,10 @@ def menu_action_handlers(
             if ctx is None:
                 return
             run = getattr(owner, "analyze", None)
-            _refused(
-                "analyze",
-                run(ctx) if callable(run) else ai_analyze.analyze(owner, ctx),
-            )
+            refusal = run(ctx) if callable(run) else ai_analyze.analyze(owner, ctx)
+            _refused("analyze", refusal)
+            if refusal is not None:
+                _surface_refusal("analyze", refusal)
         except Exception:
             pass
 

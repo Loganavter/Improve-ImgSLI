@@ -83,6 +83,11 @@
       "judge_run_call_ceiling_unlimited": "不限",
       "pairwise_enabled": "用两两比较细化接近的结果",
       "api_key_placeholder": "sk-…",
+      "api_key_status_ok": "密钥已接受 — 授权请求已通过。",
+      "api_key_status_missing": "未设置密钥 — AI 调用无法通过认证。",
+      "api_key_status_rejected": "密钥被拒绝：{detail}",
+      "api_key_status_unverified": "未能验证：{detail}",
+      "api_key_status_network": "无连接 — 密钥未检查。",
       "model_placeholder": "openrouter/auto 或 vendor/model",
       "tokens_placeholder": "自动"
     },

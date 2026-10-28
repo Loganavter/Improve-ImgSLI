@@ -83,6 +83,11 @@
       "judge_run_call_ceiling_unlimited": "ilimitado",
       "pairwise_enabled": "Refinar quase-empates por comparação em pares",
       "api_key_placeholder": "sk-…",
+      "api_key_status_ok": "Chave aceita — uma chamada autenticada passou.",
+      "api_key_status_missing": "Sem chave — as chamadas de IA não serão autenticadas.",
+      "api_key_status_rejected": "Chave recusada: {detail}",
+      "api_key_status_unverified": "Não verificado: {detail}",
+      "api_key_status_network": "Sem conexão — a chave não foi verificada.",
       "model_placeholder": "openrouter/auto ou fornecedor/modelo",
       "tokens_placeholder": "auto"
     },

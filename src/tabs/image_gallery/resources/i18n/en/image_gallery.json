@@ -83,6 +83,11 @@
       "judge_run_call_ceiling_unlimited": "unlimited",
       "pairwise_enabled": "Refine near-ties pairwise",
       "api_key_placeholder": "sk-…",
+      "api_key_status_ok": "Key accepted — an authenticated call passed.",
+      "api_key_status_missing": "No key — AI calls will not authenticate.",
+      "api_key_status_rejected": "Key rejected: {detail}",
+      "api_key_status_unverified": "Not verified: {detail}",
+      "api_key_status_network": "No connection — the key was not checked.",
       "model_placeholder": "openrouter/auto or vendor/model",
       "tokens_placeholder": "auto"
     },

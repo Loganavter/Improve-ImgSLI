@@ -75,7 +75,7 @@ from plugins.settings.typography import (
 
 from plugins.settings.registry import SettingsSection
 from plugins.settings.search import SearchIndex, group
-from tabs.image_gallery.services import ai_models, ai_providers, vlm
+from tabs.image_gallery.services import ai_key_check, ai_models, ai_providers, vlm
 from tabs.image_gallery.services.ai_settings_store import (
     JUDGE_CONCURRENCY_DEFAULT,
     JUDGE_CONCURRENCY_MAX,
@@ -411,6 +411,17 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         pass
     key_row.addWidget(key_label)
     key_row.addWidget(dialog.gallery_ai_api_key, 1)
+
+    # The key's own verdict. A stored key is NOT a working key: the catalog
+    # fetch above is public on several providers and answers 200 for a dead
+    # key (live 2026-10-28: 464 models next to a 401 keyring stub), so this row
+    # is the only place that reports whether an AUTHENTICATED call passes.
+    key_status_row = QHBoxLayout()
+    key_status_row.setContentsMargins(0, 0, 0, scaled_px(4))
+    key_status_row.setSpacing(scaled_px(8))
+    key_status_row.addSpacing(scaled_px(150 + 8))
+    dialog.gallery_ai_key_status = settings_caption_label("", parent=dialog)
+    key_status_row.addWidget(dialog.gallery_ai_key_status, 1)
 
 
     # Model: the editable value plus the provider's discovered list beside it.
@@ -1149,6 +1160,9 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     #: happened to read empty would destroy the user's stored key. Mirrors the
     #: ``spin_sync`` guard used by the spin rows below.
     key_sync = {"on": False}
+    #: Monotonic id of the newest key probe: a slow answer from an older edit
+    #: must never overwrite the verdict the user is looking at.
+    key_check = {"seq": 0}
 
     def _reload_api_key() -> None:
         """Re-probe the secret backend and show the key it can see *now*.
@@ -1200,6 +1214,121 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         finally:
             key_sync["on"] = False
 
+    def _key_status_text(ok, reason, detail) -> str:
+        """The one sentence under the key field (localized, ``{detail}`` kept)."""
+        detail = str(detail or "").strip()
+        if ok:
+            return _tr(
+                "image_gallery.settings.api_key_status_ok",
+                "Key accepted — an authenticated call passed.",
+            )
+        if reason == ai_key_check.REASON_NO_KEY:
+            return _tr(
+                "image_gallery.settings.api_key_status_missing",
+                "No key — AI calls will not authenticate.",
+            )
+        if reason == ai_key_check.REASON_NETWORK:
+            return _tr(
+                "image_gallery.settings.api_key_status_network",
+                "No connection — the key was not checked.",
+            )
+        template = (
+            _tr(
+                "image_gallery.settings.api_key_status_rejected",
+                "Key rejected: {detail}",
+            )
+            if reason == ai_key_check.REASON_AUTH
+            else _tr(
+                "image_gallery.settings.api_key_status_unverified",
+                "Not verified: {detail}",
+            )
+        )
+        try:
+            return template.format(detail=detail or str(reason or ""))
+        except (KeyError, ValueError, IndexError):
+            return template
+
+    def _show_key_status(ok, reason, detail="") -> None:
+        if not _dialog_alive(dialog):
+            return
+        label = getattr(dialog, "gallery_ai_key_status", None)
+        if label is None:
+            return
+        try:
+            label.setText(_key_status_text(ok, reason, detail))
+        except Exception:
+            logger.debug("AI key status apply failed", exc_info=True)
+
+    def _check_api_key(*, why: str = "entry") -> None:
+        """Ask the provider whether this key authenticates (off the GUI thread).
+
+        ``/models`` cannot answer it (public on OpenRouter — 200 with a dead
+        key), so the probe is ``ai_key_check.probe_key``: ``/key`` first, then a
+        1-token ping under the configured model. ``why`` names the trigger in
+        the log line: ``entry`` (page shown), ``edit`` (field left) or
+        ``apply``.
+        """
+        key_check["seq"] += 1
+        seq = key_check["seq"]
+        api_key = str(dialog.gallery_ai_api_key.text()).strip()
+        prov = _selected_provider()
+        base_url = str(dialog.gallery_ai_base_url.text()).strip() or str(
+            getattr(prov, "base_url", "") or ""
+        )
+        model = str(dialog.gallery_ai_model.text()).strip()
+        task_state: dict = {"handle": None, "reported": False}
+
+        def _forget_task() -> None:
+            task_state["reported"] = True
+            handle = task_state.get("handle")
+            if handle is None:
+                return
+            try:
+                dialog._gallery_ai_model_tasks.remove(handle)
+            except (AttributeError, ValueError):
+                pass
+
+        def _task():
+            try:
+                return ai_key_check.probe_key(base_url, api_key, model)
+            except Exception:
+                return False, ai_key_check.REASON_NETWORK, ""
+
+        def _done(result) -> None:
+            _forget_task()
+            if seq != key_check["seq"]:
+                # A newer check (another edit / a page entry) owns the row.
+                return
+            if not _dialog_alive(dialog):
+                logger.debug("AI key check completion dropped: dialog destroyed")
+                return
+            try:
+                ok, reason, detail = result if result else (
+                    False,
+                    ai_key_check.REASON_NETWORK,
+                    "",
+                )
+            except Exception:
+                ok, reason, detail = False, ai_key_check.REASON_NETWORK, ""
+            # INFO, not DEBUG: the 2026-10-28 outage was invisible because the
+            # only trace of a rejected key was a subordinate WARNING.
+            logger.info(
+                "AI key check (%s): ok=%s reason=%s detail=%s",
+                why,
+                bool(ok),
+                reason,
+                detail,
+            )
+            _show_key_status(bool(ok), str(reason or ""), str(detail or ""))
+
+        try:
+            handle = START_TASK(_task, _done)
+            task_state["handle"] = handle
+            if handle is not None and not task_state["reported"]:
+                dialog._gallery_ai_model_tasks.append(handle)
+        except Exception:
+            _done(None)
+
     def _on_api_key_edited(text) -> None:
         """Persist a key edit the user made; a programmatic fill is guarded out."""
         if key_sync["on"]:
@@ -1222,11 +1351,19 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
         if section_id == "image_gallery.ai":
             _reload_api_key()
             _refresh_models(refresh=True)
+            # The key must be checked by an AUTHENTICATED call, not by the
+            # public catalog fetch above: report its verdict on every entry.
+            _check_api_key(why="entry")
 
     try:
         dialog.gallery_ai_enabled.toggled.connect(lambda v: _save_field("enabled", bool(v)))
         dialog.gallery_ai_base_url.textChanged.connect(lambda t: _save_field("base_url", str(t)))
         dialog.gallery_ai_api_key.textChanged.connect(_on_api_key_edited)
+        # Leaving the field is the one moment worth paying a probe for: typing
+        # a 70-character key letter by letter must not spawn 70 requests.
+        dialog.gallery_ai_api_key.editingFinished.connect(
+            lambda: _check_api_key(why="edit")
+        )
         dialog.gallery_ai_model.textChanged.connect(_remember_current_model)
         dialog.gallery_ai_ask_tokens.textChanged.connect(_save_ask_tokens)
         dialog.gallery_ai_provider.currentIndexChanged.connect(
@@ -1272,6 +1409,7 @@ def build(dialog, p):  # type: ignore[no-untyped-def]
     apply_state = {"identity": _identity_snapshot(GALLERY_OWNER())}
 
     def _on_settings_confirmed() -> None:
+        _check_api_key(why="apply")
         old_identity = apply_state.get("identity")
         if not isinstance(old_identity, dict):
             return
