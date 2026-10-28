@@ -373,7 +373,12 @@ def main(argv: list[str] | None = None) -> int:
         for rule_test in rule_tests:
             hits.setdefault(rule_test, [f"{rule_test} (path rule for {rel})"])
         if not rel.endswith(".py") and not rule_tests:
-            print(f"note: no test maps to {rel} (non-Python path, no rule)", file=sys.stderr)
+            # A non-Python file under src/ that no rule maps is NOT "no tests
+            # affected" — it is "we cannot know". Measured 2026-10-28 on the
+            # first-frame PR: eight locale JSONs changed and this tool reported
+            # no test for any of them, so a locale-only change would have run
+            # zero tests. Fail-closed, like a shared module.
+            reasons.append(f"{rel}: non-Python source with no path rule")
 
     if reasons:
         print("full-tier: shared module touched, run the whole suite")

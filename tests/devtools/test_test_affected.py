@@ -137,3 +137,18 @@ def test_docs_change_maps_to_the_docs_link_graph_test(repo: Path):
 
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.splitlines() == ["tests/devtools/test_docs_link_graph.py"]
+
+
+def test_a_non_python_source_file_fails_closed(repo: Path) -> None:
+    """A locale JSON is not "no tests affected" — it is "we cannot know".
+
+    Measured 2026-10-28 on the first-frame PR: eight `resources/i18n/**/*.json`
+    files changed and the selector mapped them to nothing, so a locale-only
+    change would have run zero tests while looking green.
+    """
+    _write(repo / "src" / "plugins" / "demo" / "resources" / "i18n" / "ru" / "demo.json", "{}")
+
+    proc = _run(repo, "src/plugins/demo/resources/i18n/ru/demo.json")
+
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "non-Python source with no path rule" in proc.stdout
