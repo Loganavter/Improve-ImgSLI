@@ -108,7 +108,9 @@ def test_multi_compare_quick_save_skips_export_dialog(monkeypatch, tmp_path):
     controller = MultiCompareController(
         widget,
         store=store,
-        open_export_dialog=lambda **kwargs: dialog_calls.append(kwargs) or (0, {}),
+        # Non-modal dialog service: returns the live dialog (None here), the
+        # export would continue via its on_finished callback.
+        open_export_dialog=lambda **kwargs: dialog_calls.append(kwargs) or None,
     )
     # B4: seed one cached tier so the tree is exportable (an imageless
     # tree must refuse — see test_multi_compare_quick_save_refuses_imageless_tree).

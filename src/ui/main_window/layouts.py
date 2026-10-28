@@ -148,13 +148,14 @@ class LayoutComposer:
             )
 
         def open_image_export_dialog(*, dialog_state, **kwargs):
-            from PySide6.QtWidgets import QDialog
-
             from plugins.export.models import ExportDialogState
 
             mgr = _ui_manager()
             if mgr is None:
-                return QDialog.DialogCode.Rejected, {}
+                return None
+            # Non-modal: the caller passes ``on_finished=`` and the dialog
+            # returns immediately (no ``exec()``); ``None`` here means "no
+            # dialog was shown", so the caller just does nothing.
             return mgr.dialogs.show_export_dialog(
                 ExportDialogState(**dialog_state), **kwargs
             )

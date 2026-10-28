@@ -167,15 +167,36 @@ class ExportPresenter(QObject):
 
         try:
             save_ctx = self.context_builder.build_save_context(include_preview=True)
-            result_code, export_opts = self._open_export_dialog(
+            self._open_export_dialog(
                 save_ctx.preview_img,
                 save_ctx.suggested_filename,
                 native_size=(save_ctx.native_width, save_ctx.native_height),
                 virtual_canvas_active=bool(save_ctx.virtual_canvas_active),
+                on_finished=lambda code, options: self._start_save_after_dialog(
+                    save_ctx, code, options
+                ),
             )
-            if int(result_code) != int(QDialog.DialogCode.Accepted):
-                return
 
+        except Exception as e:
+            logger.error(f"Error during save preparation: {e}", exc_info=True)
+            self.ui_manager.messages.show_non_modal_message(
+                kind=MessageKind.CRITICAL,
+                title=self._tr("common.error"),
+                text=f"{self._tr('image_compare.msg.failed_to_save_image')}: {str(e)}",
+            )
+
+    def _start_save_after_dialog(self, save_ctx, result_code, export_opts) -> None:
+        """Continuation of :meth:`save_result` once the dialog reports back.
+
+        The export dialog is non-modal (it used to be ``exec()``-ed), so the
+        export starts here, from its ``finished`` handler, with exactly the
+        options the user accepted. ``code != Accepted`` means cancel: nothing
+        is written and no untested-resolution prompt is shown.
+        """
+        if int(result_code) != int(QDialog.DialogCode.Accepted):
+            return
+
+        try:
             if not self.save_flow.validate_export_options(export_opts):
                 return
 
@@ -214,6 +235,7 @@ class ExportPresenter(QObject):
         native_size=None,
         *,
         virtual_canvas_active: bool = True,
+        on_finished=None,
     ):
         dialog_state = self.state.build_export_dialog_state()
         dialog_state.virtual_canvas_active = bool(virtual_canvas_active)
@@ -223,6 +245,7 @@ class ExportPresenter(QObject):
             suggested_filename,
             self._set_export_favorite_dir,
             native_size,
+            on_finished=on_finished,
         )
 
     def quick_save(self):

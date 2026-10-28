@@ -509,14 +509,23 @@ def on_save_requested(controller) -> None:
         ),
     )
 
-    result_code, options = controller.open_export_dialog(
+    controller.open_export_dialog(
         dialog_state=export_dialog_state_kwargs(controller),
         preview_image=preview,
         suggested_filename="multi_compare",
         native_size=native_size,
         on_set_favorite_dir=lambda path: set_favorite_dir(controller, path),
+        on_finished=lambda code, options: start_composite_save(controller, code, options),
     )
 
+
+def start_composite_save(controller, result_code, options: dict) -> None:
+    """Compose and save once the (non-modal) export dialog reports back.
+
+    Continuation of :func:`on_save_requested` — the dialog returns immediately
+    now, so this runs from its ``finished`` handler. ``code != Accepted`` is a
+    cancel: nothing is composed, nothing is written.
+    """
     if int(result_code) != int(QDialog.DialogCode.Accepted):
         return
     try:

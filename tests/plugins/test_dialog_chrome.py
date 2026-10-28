@@ -178,24 +178,18 @@ def test_qwindow_minimum_pinned_after_show_and_export_repin(qapp):
         dialog.deleteLater()
 
 
-def test_export_dialog_parented_to_shell(qapp, monkeypatch):
+def test_export_dialog_parented_to_shell(qapp):
     from types import SimpleNamespace
 
-    from plugins.export.dialog import ExportDialog
     from ui.managers.dialog_manager import DialogManager
 
     shell = QWidget()
     host = SimpleNamespace(parent_widget=shell)
     manager = DialogManager(host)
 
-    captured = {}
-
-    def fake_exec(self):
-        captured["parent"] = self.parent()
-        return 0
-
-    monkeypatch.setattr(ExportDialog, "exec", fake_exec)
-    manager.show_export_dialog(
+    # Non-modal (2026-10-28): the manager returns the live dialog instead of a
+    # (code, options) tuple from a blocking exec(); parenting is unchanged.
+    dialog = manager.show_export_dialog(
         dialog_state=SimpleNamespace(
             output_dir="/tmp",
             favorite_dir=None,
@@ -213,5 +207,7 @@ def test_export_dialog_parented_to_shell(qapp, monkeypatch):
         preview_image=None,
         suggested_filename="out",
     )
-    assert captured.get("parent") is shell
+    assert dialog.parent() is shell
+    dialog.close()
+    dialog.deleteLater()
     shell.deleteLater()

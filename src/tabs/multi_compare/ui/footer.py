@@ -48,7 +48,8 @@ class MultiCompareFooter(ThemedWidget, QWidget):
             text=text,
             variant="surface",
             parent=self,
-            # save_clicked -> ExportDialog.exec() (modal).
+            # save_clicked -> non-modal ExportDialog (export continues in its
+            # `finished` handler, not after exec()).
             defer_click=DEFER_CLICK_AWAIT_RIPPLE,
         )
         translatable_text(
