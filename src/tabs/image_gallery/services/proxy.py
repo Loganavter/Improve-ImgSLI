@@ -198,6 +198,36 @@ def _build_proxy_from_store(store) -> Proxy | None:
     return Proxy(image=_bounded_rgb(rgb), size=orig)
 
 
+def _span(path, outcome: str, *, cached: bool, t0: float) -> None:
+    """One tracer span per proxy decode — the live counter W7 item 3 owed.
+
+    Recorded HERE, not patched from ``core.tracing.instrumentation``: a core
+    module may not import a tab package (platform isolation), and this module is
+    the one that knows whether the answer came from the cache. A no-op unless the
+    tracer is installed (``IMGSLI_TRACE=1``).
+    """
+    try:
+        from core.tracing.tracer import Tracer
+
+        if not Tracer.enabled():
+            return
+        import time as _time
+
+        Tracer.instance().record(
+            "decode.proxy",
+            f"proxy_for -> {outcome} (cached={cached})",
+            {
+                "path": str(path),
+                "edge": "proxy",
+                "outcome": outcome,
+                "cached": bool(cached),
+                "duration_ms": round((_time.monotonic() - t0) * 1000.0, 2),
+            },
+        )
+    except Exception:
+        pass
+
+
 def proxy_for(path: Path | str, *, store=None) -> Proxy | None:
     """Shared bounded proxy for *path* (cached; None when unreadable).
 
@@ -209,12 +239,17 @@ def proxy_for(path: Path | str, *, store=None) -> Proxy | None:
     *store* is an open ``TiledPixelStore`` the caller owns (it closes it); a
     store that is closed or unreadable simply falls back to the decode path.
     """
+    import time as _time
+
+    _t0 = _time.monotonic()
     try:
         p = Path(path)
     except Exception:
+        _span(path, "bad-path", cached=False, t0=_t0)
         return None
     key = _stat_key(p)
     if key is None:
+        _span(p, "no-stat", cached=False, t0=_t0)
         return None
     try:
         hit = _PROXY_CACHE.get(key)
@@ -222,6 +257,7 @@ def proxy_for(path: Path | str, *, store=None) -> Proxy | None:
         hit = None
     if hit is not None:
         _touch_proxy_entry(key)
+        _span(p, "ok", cached=True, t0=_t0)
         return hit
     proxy = None
     if store is not None:
@@ -233,6 +269,7 @@ def proxy_for(path: Path | str, *, store=None) -> Proxy | None:
     if proxy is None:
         proxy = _build_proxy(p)
     if proxy is None:
+        _span(p, "none", cached=False, t0=_t0)
         return None
     try:
         while len(_PROXY_CACHE) >= PROXY_CACHE_LIMIT:
@@ -247,7 +284,36 @@ def proxy_for(path: Path | str, *, store=None) -> Proxy | None:
         _PROXY_CACHE[key] = proxy
     except Exception:
         pass
+    _span(p, "ok", cached=False, t0=_t0)
     return proxy
+
+
+def _store_span(path, outcome: str, *, t0: float) -> None:
+    """``decode.store``: the FULL-RES open (the "1 store per Quick-Look dwell" claim).
+
+    Recorded at the gallery's own seam (``_open_full_res_store``) rather than inside
+    ``TiledPixelStore.from_path``: the engine must not learn about tracing, and this
+    is the call site that knows whether the open was for a proxy pass or a dwell.
+    """
+    try:
+        from core.tracing.tracer import Tracer
+
+        if not Tracer.enabled():
+            return
+        import time as _time
+
+        Tracer.instance().record(
+            "decode.store",
+            f"TiledPixelStore.from_path -> {outcome}",
+            {
+                "path": str(path),
+                "edge": "full-res",
+                "outcome": outcome,
+                "duration_ms": round((_time.monotonic() - t0) * 1000.0, 2),
+            },
+        )
+    except Exception:
+        pass
 
 
 def _open_full_res_store(path):
@@ -258,13 +324,19 @@ def _open_full_res_store(path):
     fail open to the bounded proxy. I2: this store is also the item's proxy
     decode, so the caller hands it to ``proxy_for`` before closing it.
     """
+    import time as _time
+
+    _t0 = _time.monotonic()
     try:
         from engine.store.tiled_pixel_store import TiledPixelStore
 
-        return TiledPixelStore.from_path(path)
+        store = TiledPixelStore.from_path(path)
     except Exception:
         logger.debug("proxy batch: full-res store open failed for %s", path, exc_info=True)
+        _store_span(path, "failed", t0=_t0)
         return None
+    _store_span(path, "ok", t0=_t0)
+    return store
 
 
 def _close_store(store, own) -> None:

@@ -68,6 +68,7 @@ from devtools.live_gallery_ai_common import (
     _line_ms,
     _local_axis_values,
     _read_entries,
+    decode_probe,
     _socket_target,
     _stop_app,
     _stub_router,
@@ -312,6 +313,11 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(1.5)
         verdict["local_pass_settled"] = settled_local
 
+        probe = decode_probe(control, folder)
+        verdict["decode_cold"] = probe["cold"]
+        verdict["decode_warm"] = probe["warm"]
+        verdict["decode_warm_added"] = probe["added"]
+
         try:
             trace = control.call("query_trace", filter=JUDGE_ONLY_AXIS, n=40)
             verdict["trace_hits"] = [
@@ -414,6 +420,16 @@ def main(argv: list[str] | None = None) -> int:
         "no_local_only_axis_in_the_ai_entry": bool(ai_entries) and not any(
             axis in row["axes"] for row in ai_entries for axis in LOCAL_ONLY_AXES
         ),
+        "decode_spans_recorded": bool(verdict.get("decode_cold")),
+        "every_item_proxied_at_least_once": bool(verdict.get("decode_cold", {}).get("decode.proxy"))
+        and all(count >= 1 for count in verdict["decode_cold"]["decode.proxy"].values()),
+        # NOT a gate: measured 2026-10-28, a folder REOPEN re-decodes every item
+        # (4 cold -> +4 warm). The proxy cache does not survive a pool reset, which
+        # is a design fact worth reporting, not a defect — the "warm reopen = 0"
+        # invariant the isolation fixtures assert is about re-reading the SAME
+        # file (Quick Look), not about reopening the folder. The number is in the
+        # verdict so nobody quotes "warm = 0" about a folder reopen.
+        "warm_reopen_was_measured": isinstance(verdict.get("decode_warm_added"), dict),
         "rank_reached_the_ranker": any(
             marker in line
             for line in verdict["log_lines"]["rank"]
