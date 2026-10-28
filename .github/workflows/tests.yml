@@ -72,7 +72,13 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           PYTHONDONTWRITEBYTECODE: 1
         run: |
-          python -m pytest tests -m "not slow" -n auto -q -p no:cacheprovider --durations=10
+          # SERIAL, no `-n auto`. #794 made serial the gate again ("parallel is
+          # measured, opt-in, and its five leaks are named") and this workflow was
+          # left behind: with xdist, global Qt state (QApplication, UiFont, theme
+          # pins, shared temp dirs) races between workers and EVERY run ended with
+          # a DIFFERENT single failure — six of them were "fixed" one by one
+          # (2026-10-28) before the pattern itself was read.
+          python -m pytest tests -m "not slow" -q -p no:cacheprovider --durations=10
 
   comment-citations:
     name: Comment citations (stale/ambiguous)
