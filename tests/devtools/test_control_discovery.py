@@ -63,6 +63,27 @@ def _mcp_backend():
     return backend
 
 
+@pytest.fixture
+def short_tmp():
+    """A SHORT temp root for unix-socket tests.
+
+    ``AF_UNIX`` paths are capped at ~108 bytes. A CI runner's ``tmp_path``
+    (``/tmp/pytest-of-runner/pytest-0/test_<name>0/data/ImproveImgSLI/run/
+    control.sock``) overflows that and ``bind()`` raises
+    ``OSError: AF_UNIX path too long`` — a runner-plane failure that says nothing
+    about discovery, which is what these tests measure.
+    """
+    import pathlib as _pathlib
+    import shutil
+    import tempfile
+
+    path = _pathlib.Path(tempfile.mkdtemp(dir="/tmp", prefix="sli-t"))
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+
+
 def _qapp() -> QApplication:
     return QApplication.instance() or QApplication([])
 
@@ -619,29 +640,29 @@ def test_runtime_dir_never_publishes_into_a_legacy_run_dir(tmp_path, monkeypatch
     assert leftover.is_file(), "the legacy tree must never be cleaned up"
 
 
-def test_mcp_falls_back_to_a_pre_rename_instance(tmp_path, monkeypatch):
+def test_mcp_falls_back_to_a_pre_rename_instance(short_tmp, monkeypatch):
     """A still-running pre-rename build stays attachable after the rename.
 
     Falsification: with only the current dir probed, an instance started before
     the upgrade became invisible to the MCP while its socket kept listening.
     """
     live = _mcp_live()
-    _apply_case("no-runtime-dir", tmp_path, monkeypatch)
-    legacy_run = tmp_path / "data" / "ImproveImgSLI" / "run"
+    _apply_case("no-runtime-dir", short_tmp, monkeypatch)
+    legacy_run = short_tmp / "data" / "ImproveImgSLI" / "run"
     listener = _listen(legacy_run / "control.sock")
     try:
-        assert discovery.runtime_dir() == tmp_path / "data" / "BlinkTable" / "run"
+        assert discovery.runtime_dir() == short_tmp / "data" / "BlinkTable" / "run"
         assert live.discover_socket(dict(os.environ)) == legacy_run / "control.sock"
     finally:
         listener.close()
 
 
-def test_the_current_dir_wins_over_a_pre_rename_one(tmp_path, monkeypatch):
+def test_the_current_dir_wins_over_a_pre_rename_one(short_tmp, monkeypatch):
     """Preference order, not just reachability: current first, legacy second."""
     live = _mcp_live()
-    _apply_case("no-runtime-dir", tmp_path, monkeypatch)
-    current_run = tmp_path / "data" / "BlinkTable" / "run"
-    legacy_run = tmp_path / "data" / "ImproveImgSLI" / "run"
+    _apply_case("no-runtime-dir", short_tmp, monkeypatch)
+    current_run = short_tmp / "data" / "BlinkTable" / "run"
+    legacy_run = short_tmp / "data" / "ImproveImgSLI" / "run"
     current = _listen(current_run / "control.sock")
     legacy = _listen(legacy_run / "control.sock")
     try:

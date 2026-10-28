@@ -69,6 +69,8 @@
     "keyboard_group_image_compare": "Image Compare",
     "keyboard_group_multi_compare": "Multi Compare",
     "recording_fps": "录制帧率",
-    "video_recording": "视频录制"
+    "video_recording": "视频录制",
+    "search_placeholder": "搜索设置…",
+    "search_no_results": "没有匹配的设置"
   }
 }

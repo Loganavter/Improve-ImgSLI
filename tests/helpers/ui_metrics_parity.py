@@ -219,19 +219,35 @@ def _font_lever() -> tuple[Callable[[], None], Callable[[], None]]:
     """
     ui_font = UiFont.get_instance()
     current = ui_font.family()
-    base_advance = QFontMetrics(ui_font.resolve()).horizontalAdvance(_PROBE_TEXT)
+    base_metrics = QFontMetrics(ui_font.resolve())
+    base_advance = base_metrics.horizontalAdvance(_PROBE_TEXT)
+    base_height = base_metrics.height()
+    # The probes are GEOMETRY (width/height of a derived surface), so the lever
+    # has to move the metric the geometry derives from: the font HEIGHT. A family
+    # that only changes the advance left `value_slider_row` at the same (54, 19)
+    # on a CI runner and failed the parity check for a reason that is not the
+    # widget's — hence the height-first selection, and a skip when nothing moves
+    # it at all.
     alternate: str | None = None
+    fallback: str | None = None
     for family in sorted(QFontDatabase.families()):
         if family == current:
             continue
         metrics = QFontMetrics(ui_font.resolve(family=family))
-        if metrics.horizontalAdvance(_PROBE_TEXT) != base_advance:
+        if metrics.height() != base_height:
             alternate = family
             break
+        if fallback is None and metrics.horizontalAdvance(_PROBE_TEXT) != base_advance:
+            fallback = family
+    del fallback  # advance-only faces are NOT a usable lever: see below
     if alternate is None:
+        # Measured on a CI runner: families that change only the ADVANCE left
+        # `value_slider_row` at the same (54, 19) — these probes' geometry follows
+        # the font HEIGHT, so an advance-only face cannot exercise the contract
+        # and using it turned an unmeasurable environment into a red test.
         pytest.skip(
-            "no alternate font family with different metrics is available; "
-            "the font lever cannot move font-derived geometry here"
+            "no alternate font family changes the font HEIGHT on this system; "
+            "the height-derived geometry these probes measure cannot move here"
         )
 
     # Capture the original override BEFORE the first apply can change it.

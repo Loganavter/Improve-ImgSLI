@@ -27,5 +27,29 @@
     "tooltip": {
       "save_grid": "保存网格"
     }
-  }
+  },
+  "tab_name": "多重对比",
+  "add_images": "添加图像",
+  "save_result": "保存结果",
+  "label": {
+    "font_size": "字体大小",
+    "bold": "粗体",
+    "opacity": "不透明度",
+    "color": "文字颜色",
+    "background": "背景"
+  },
+  "settings": {
+    "draw_text_background": "绘制背景"
+  },
+  "context": {
+    "rename": "重命名",
+    "name": "名称",
+    "duplicate": "创建副本",
+    "properties": "属性",
+    "crop": "裁剪",
+    "remove": "移除"
+  },
+  "drop_image_here": "将图像拖放到此处",
+  "drop_move_here": "移动到此",
+  "drop_swap": "交换"
 }

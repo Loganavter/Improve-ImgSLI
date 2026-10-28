@@ -10,8 +10,8 @@ export dialog, every later project file dialog appeared *under* the main window;
 "в остальных случаях порядок появления верный") came from Qt's *in-process* GTK
 dialog: a foreign window whose ``transient-for`` rides an exported parent surface
 plus an xdg-activation grant we do not control. The documented family lives in
-`docs/dev/platform/investigations/help-dialog-opens-below-main-window.md` and
-`flyout-restore-wayland-activation-notification.md`: mutter's
+the internal notes on the help dialog opening below the main window and on the
+flyout restore / xdg-activation notification: mutter's
 ``meta_window_show()`` places a window that maps with
 ``takes_focus_on_map == FALSE`` **just below the focused window** — i.e. behind
 the app — unless the focused window is an ancestor of its transient chain (an

@@ -27,5 +27,29 @@
     "tooltip": {
       "save_grid": "Salvar grade"
     }
-  }
+  },
+  "tab_name": "Comparação múltipla",
+  "add_images": "Adicionar imagens",
+  "save_result": "Salvar resultado",
+  "label": {
+    "font_size": "Tamanho da fonte",
+    "bold": "Negrito",
+    "opacity": "Opacidade",
+    "color": "Cor do texto",
+    "background": "Fundo"
+  },
+  "settings": {
+    "draw_text_background": "Desenhar fundo"
+  },
+  "context": {
+    "rename": "Renomear",
+    "name": "Nome",
+    "duplicate": "Duplicar",
+    "properties": "Propriedades",
+    "crop": "Cortar",
+    "remove": "Remover"
+  },
+  "drop_image_here": "Solte a imagem aqui",
+  "drop_move_here": "Mover para cá",
+  "drop_swap": "Trocar"
 }

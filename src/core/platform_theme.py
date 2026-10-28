@@ -5,7 +5,7 @@ chooser, through the XDG desktop portal** ("вернуть нативный че
 The portal answers in a separate application and parents that window itself, so
 the native look and the "dialog lands under the main window" fix coexist; Qt's
 *in-process* GTK dialog is the shape that could map behind us
-(`docs/dev/platform/investigations/help-dialog-opens-below-main-window.md`).
+(see the internal notes on the help dialog opening below the main window).
 
 Only seeds ``QT_QPA_PLATFORMTHEME`` — it must run before ``QApplication`` exists,
 and it never overrides a theme the user (or the launcher) already chose.
