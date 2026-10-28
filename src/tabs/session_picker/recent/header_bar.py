@@ -244,7 +244,7 @@ class RecentHeaderBar(QWidget):
         toggle only POSTS a layout re-run, so the frame committed right after
         the sync carries the construction-time geometry (zero-width chips) and
         the toolbar appears a beat later — measured 2026-10-23 on a headless
-        sway: ~0.8 s. Mechanism 1 of ``../improve-imgsli-internal-docs/docs/dev/QT_LAYOUT_PITFALLS.md``.
+        sway: ~0.8 s. Mechanism 1 of the internal notes on QT_LAYOUT_PITFALLS.
         """
         from sli_ui_toolkit.ui.layout_settle import settle_layout
 

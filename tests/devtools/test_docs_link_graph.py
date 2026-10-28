@@ -101,7 +101,7 @@ def _agent_repo(tmp_path: Path) -> Path:
     )
     _write(
         repo / "skills" / "demo" / "SKILL.md",
-        "# Skill\n\nEmpirical notes: [gotchas](../../../improve-imgsli-internal-docs/docs/dev/x.md).\n",
+        "# Skill\n\nEmpirical notes: [gotchas](../../../sli-ui-toolkit/docs/dev/x.md).\n",
     )
     _write(repo / ".github" / "copilot-instructions.md", "# Copilot\n\nSee [b](docs/dev/b.md).\n")
     return repo
@@ -169,7 +169,7 @@ def test_cited_repo_path_that_does_not_exist_is_found(tmp_path: Path):
         "tests/<tab>/test_x.py",
         "src/**/*.py",
         "src/x.py:12",
-        "../improve-imgsli-internal-docs/docs/dev/x.md",
+        "../sli-ui-toolkit/docs/dev/x.md",
         "../sli-ui-toolkit/src/sli_ui_toolkit/widgets.py",
         "./relative/x.md",
         "mcp-server/missing/tool.py:*",

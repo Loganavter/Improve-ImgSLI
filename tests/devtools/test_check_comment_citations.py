@@ -390,7 +390,7 @@ def test_existing_doc_path_passes(checker, tmp_path, capsys) -> None:
         "tests/**/*.py",
         "docs/dev/x.md:12",
         "./docs/dev/x.md",
-        "../improve-imgsli-internal-docs/docs/dev/x.md",
+        "../sli-ui-toolkit/docs/dev/x.md",
         "README.md",
         "live.md",
     ],

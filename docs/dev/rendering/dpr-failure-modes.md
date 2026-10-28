@@ -9,7 +9,7 @@ red on a snippet of the real broken code under
 
 The full version of this chapter, with the per-incident history, screenshots and
 the cross-tab investigations, lives in the private knowledge base:
-`../improve-imgsli-internal-docs/docs/dev/rendering/dpr-failure-modes.md`
+the internal notes on dpr-failure-modes
 (sibling checkout, not part of this repo). This page is the app-facing subset:
 what to do, and which detector will catch you.
 

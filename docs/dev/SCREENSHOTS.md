@@ -415,4 +415,4 @@ frames**: the app resizes its own window during startup (saved geometry /
 maximize applied after the deferred batch), so a pure pixel verdict is a hint
 there, not proof — the transition frames are the evidence. Requires `sway`
 (wlroots) and `grim`. Details and the sibling instrument caveats:
-`../improve-imgsli-internal-docs/docs/dev/DEBUGGING.md` rule 7.
+the internal notes on DEBUGGING rule 7.

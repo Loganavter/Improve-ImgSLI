@@ -2,7 +2,7 @@
 
 Status: **as-is map, verified** (originally proposed 2026-08-25, as a follow-up
 to the deep review waves in the private docs repo:
-`../improve-imgsli-internal-docs/docs/dev/investigations/cross-module-review-2026-08-25-wave2.md`).
+the internal notes on cross-module-review-2026-08-25-wave2).
 The three deferral phases proposed here have since shipped (see § Tier C); what
 remains below is current behaviour, not a plan.
 

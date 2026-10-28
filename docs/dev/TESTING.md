@@ -153,7 +153,7 @@ Timing-sensitive tests that fail only under parallel load are marked
 
 | Test | Symptom |
 |---|---|
-| `tests/contracts/test_chrome_lifetime.py::test_reveal_pulse_exception_swallowed` | `QTimer.singleShot(0)` pulse may not fire before teardown under `-n 8` load; 3/3 green alone. Fix direction: explicit signal wait instead of `delay_ms=0` (see `../improve-imgsli-internal-docs/docs/dev/KNOWN_BUGS.md` Qt quirks). |
+| `tests/contracts/test_chrome_lifetime.py::test_reveal_pulse_exception_swallowed` | `QTimer.singleShot(0)` pulse may not fire before teardown under `-n 8` load; 3/3 green alone. Fix direction: explicit signal wait instead of `delay_ms=0` (see the internal notes on KNOWN_BUGS Qt quirks). |
 | `src/tabs/session_picker/tests/runtime/test_keyboard_navigation.py::test_down_from_last_header_enters_recent_items` | Offscreen focus handoff (header → recent items) can be dropped under full `-n` load (whole tree in one session); green in the tab suite alone. Hardened to `widget.focusWidget()` + `qtbot.waitUntil`; residual is Qt-offscreen focus timing, not a product bug. |
 | `src/tabs/session_picker/tests/runtime/test_session_picker_refresh_focus.py::test_tab_stores_widget_and_hooks_are_order_safe` | Tab lifecycle + focus timing under parallel load; green alone. |
 | `src/tabs/session_picker/tests/runtime/test_keyboard_navigation.py::test_up_from_first_recent_item_returns_to_last_create_card` | Same offscreen focus handoff as the Down case; fails only in full-suite order (journal `1bf913a7` and 2026-10-14), green in isolation. |

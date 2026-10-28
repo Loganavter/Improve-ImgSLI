@@ -429,7 +429,7 @@ Each item was checked against the code before deciding:
 ### Follow-up review (2026-08-25)
 
 A three-pass cross-module review
-(improve-imgsli-internal-docs/docs/dev/investigations/cross-module-review-2026-08-25.md)
+(the internal notes)
 re-verified this plan's open items and added a low-risk consolidation queue
 (tracked in [TODO.md](TODO.md), sections tagged "review 2026-08-25").
 Status corrections: **renderer-unification Phase 4 (`drop_covered_*`) is

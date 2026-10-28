@@ -176,7 +176,7 @@ materialized (`ImageCompareTab.create_main_window_feature` returns `None`
 while `self._widget` is still unset). This is what let `image_compare` stop
 being forced into existence at every boot merely because the legacy shell
 depended on it. See
-`../improve-imgsli-internal-docs/docs/dev/investigations/lazy-legacy-shell-plan.md`
+the internal notes on lazy-legacy-shell-plan
 (private docs repo) for
 the full writeup, including the small set of call sites
 (`ui/presenters/main_window/connections.py`,
@@ -433,4 +433,4 @@ As of this writing:
 
 The lazy legacy-shell writeup behind `create_main_window_feature` lives in the
 private docs repo, not here:
-`../improve-imgsli-internal-docs/docs/dev/investigations/lazy-legacy-shell-plan.md`.
+the internal notes on lazy-legacy-shell-plan.
