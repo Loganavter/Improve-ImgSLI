@@ -25,8 +25,12 @@ jobs:
       - name: Check Out Toolkit Sibling
         uses: actions/checkout@v4
         with:
-          repository: Loganavter/sli-ui-toolkit-private
-          token: ${{ secrets.TOOLKIT_PAT }}
+          # The toolkit is the canonical PUBLIC dev repo since the 2026-10-28
+          # identity swap (the old `sli-ui-toolkit-private` name is gone), so no
+          # PAT is needed: a public clone works with the default token. The
+          # private name was still here and made the sibling checkout fail, which
+          # then failed the translation gate (it checks the toolkit's keys too).
+          repository: Loganavter/sli-ui-toolkit
           path: sli-ui-toolkit
 
       - name: Set Up Python
@@ -68,7 +72,13 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           PYTHONDONTWRITEBYTECODE: 1
         run: |
-          python -m pytest tests -m "not slow" -n auto -q -p no:cacheprovider --durations=10
+          # SERIAL, no `-n auto`. #794 made serial the gate again ("parallel is
+          # measured, opt-in, and its five leaks are named") and this workflow was
+          # left behind: with xdist, global Qt state (QApplication, UiFont, theme
+          # pins, shared temp dirs) races between workers and EVERY run ended with
+          # a DIFFERENT single failure — six of them were "fixed" one by one
+          # (2026-10-28) before the pattern itself was read.
+          python -m pytest tests -m "not slow" -q -p no:cacheprovider --durations=10
 
   comment-citations:
     name: Comment citations (stale/ambiguous)
@@ -85,8 +95,12 @@ jobs:
       - name: Check Out Toolkit Sibling
         uses: actions/checkout@v4
         with:
-          repository: Loganavter/sli-ui-toolkit-private
-          token: ${{ secrets.TOOLKIT_PAT }}
+          # The toolkit is the canonical PUBLIC dev repo since the 2026-10-28
+          # identity swap (the old `sli-ui-toolkit-private` name is gone), so no
+          # PAT is needed: a public clone works with the default token. The
+          # private name was still here and made the sibling checkout fail, which
+          # then failed the translation gate (it checks the toolkit's keys too).
+          repository: Loganavter/sli-ui-toolkit
           path: sli-ui-toolkit
 
       - name: Set Up Python
@@ -118,8 +132,12 @@ jobs:
       - name: Check Out Toolkit Sibling
         uses: actions/checkout@v4
         with:
-          repository: Loganavter/sli-ui-toolkit-private
-          token: ${{ secrets.TOOLKIT_PAT }}
+          # The toolkit is the canonical PUBLIC dev repo since the 2026-10-28
+          # identity swap (the old `sli-ui-toolkit-private` name is gone), so no
+          # PAT is needed: a public clone works with the default token. The
+          # private name was still here and made the sibling checkout fail, which
+          # then failed the translation gate (it checks the toolkit's keys too).
+          repository: Loganavter/sli-ui-toolkit
           path: sli-ui-toolkit
 
       - name: Set Up Python

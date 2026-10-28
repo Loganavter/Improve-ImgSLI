@@ -5,7 +5,10 @@ Exec=blinktable %F
 Icon=blinktable
 Terminal=false
 Type=Application
-Categories=Graphics;2DGraphics;
+# Categories must match improve-imgsli.desktop.in (the launcher entry): the same
+# app under two different menu sections depending on how it was installed was the
+# one real inconsistency between the two desktop files (owner decision 2026-10-28).
+Categories=Graphics;Photography;
 MimeType=application/vnd.blinktable.project+zip;application/x-improve-imgsli;
 # StartupWMClass stays on the pre-rename value on purpose: the app sets
 # RESOURCE_NAME=improve-imgsli (src/__main__.py:116), so this is its real

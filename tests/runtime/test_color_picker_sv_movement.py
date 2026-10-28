@@ -106,7 +106,13 @@ def test_a_single_axis_tick_moves_the_full_base_step(qapp):
     stepper.press(Qt.Key.Key_Up)
     try:
         stepper.advance(stepper.interval_seconds)
-        assert seen == pytest.approx([(0.0, 0.01, stepper.interval_seconds)])
+        # ``pytest.approx`` refuses NESTED structures (newer pytest raises
+        # TypeError instead of silently comparing tuples element-wise), so the
+        # single tick is unpacked and compared axis by axis.
+        assert len(seen) == 1
+        tick_dx, tick_dy, tick_dt = seen[0]
+        assert (tick_dx, tick_dy) == pytest.approx((0.0, 0.01))
+        assert tick_dt == pytest.approx(stepper.interval_seconds)
     finally:
         stepper.clear()
 

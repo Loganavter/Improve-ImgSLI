@@ -505,7 +505,7 @@ def rebuild_strip(overlay) -> None:
                 # room, min BADGE_MIN_WIDTH, capped to the thumb. The Button's
                 # own sizeHint reserves 24px (12 each side) and lagged the
                 # real advance; measuring the label font directly is the same
-                # rule the card painter uses (``card/painters.py:117-118``).
+                # rule the card painter uses (``src/tabs/image_gallery/ui/card/painters.py:117-118``).
                 # ``_design_fixed_size`` keeps the DESIGN width for a UiScale
                 # re-derive.
                 try:

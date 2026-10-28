@@ -139,7 +139,7 @@ def _ic_dividers(
             "space": SPACE_CANVAS_PX,
             "thickness": float(max(0, thickness)),
             # The thickness setting is a widget-px width used verbatim by the
-            # divider pass (``divider/overlay_model.py:75``); reporting it as
+            # divider pass (``src/tabs/image_compare/canvas/features/divider/overlay_model.py:75``); reporting it as
             # canvas px would be a unit lie.
             "thickness_space": SPACE_WIDGET_PX,
             "visible": painted,
@@ -149,7 +149,7 @@ def _ic_dividers(
             if painted
             else ("diff_mode" if visible and diff_mode != "off" else "divider_hidden"),
             # The painted line is positioned in view-transformed widget px
-            # (``divider/overlay_model.py:76-82``), i.e. it moves with zoom/pan
+            # (``src/tabs/image_compare/canvas/features/divider/overlay_model.py:76-82``), i.e. it moves with zoom/pan
             # while ``pos`` above stays the content-space split, in canvas px.
             "painted_position_space": SPACE_WIDGET_PX,
         }

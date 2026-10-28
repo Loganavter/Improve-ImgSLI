@@ -66,6 +66,27 @@ SILENT = object()
 # --- fake control server ----------------------------------------------------
 
 
+@pytest.fixture
+def short_tmp():
+    """A SHORT temp root for unix-socket tests.
+
+    ``AF_UNIX`` paths are capped at ~108 bytes. A CI runner's ``tmp_path``
+    (``/tmp/pytest-of-runner/pytest-0/test_<name>0/data/ImproveImgSLI/run/
+    control.sock``) overflows that and ``bind()`` raises
+    ``OSError: AF_UNIX path too long`` — a runner-plane failure that says nothing
+    about discovery, which is what these tests measure.
+    """
+    import pathlib as _pathlib
+    import shutil
+    import tempfile
+
+    path = _pathlib.Path(tempfile.mkdtemp(dir="/tmp", prefix="sli-t"))
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+
+
 def default_handler(method: str, params: dict):
     """Canned answers in the app's own shapes, one branch per protocol method."""
     if method == "ping":
@@ -615,7 +636,7 @@ def test_discover_socket_falls_back_to_the_app_data_run_dir(monkeypatch, tmp_pat
 
 
 def test_discover_socket_falls_back_to_the_pre_rename_data_dir(
-    monkeypatch, tmp_path
+    monkeypatch, short_tmp
 ):
     """A process from the pre-rename build keeps its channel attachable.
 
@@ -623,7 +644,7 @@ def test_discover_socket_falls_back_to_the_pre_rename_data_dir(
     was started before the upgrade invisible while its socket was still
     listening — the agent then booted a second headless app instead of attaching.
     """
-    data_home = tmp_path / "share"
+    data_home = short_tmp / "share"
     legacy_run = data_home / "ImproveImgSLI" / "run"
     socket_path = FakeControlServer(legacy_run / "control.sock").start().path
     try:
