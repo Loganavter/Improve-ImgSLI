@@ -196,6 +196,50 @@ def _resolve_dialog_title(dialog: QDialog) -> str:
 _CLOSE_ONLY_DIALOG_TYPES = (QFileDialog, QMessageBox)
 
 
+#: The window flags every app-owned (non-main) window declares — the set the
+#: video editor already had. Owner rule, 2026-10-28: "give the export dialog the
+#: same flags as the video editor, and ideally every window that is not the main
+#: one". Eight dialog classes each declared their own subset (Export/Settings/
+#: Help/Properties: close-only; video editor: all four), so platform code that
+#: reads the hints (Windows native frames, Qt's own state bookkeeping) saw eight
+#: different answers. The CSD draws the buttons from its own config, so this is
+#: about declaring one capability set, not about drawing.
+_DIALOG_WINDOW_FLAGS = (
+    Qt.WindowType.Window
+    | Qt.WindowType.WindowTitleHint
+    | Qt.WindowType.WindowCloseButtonHint
+    | Qt.WindowType.WindowMaximizeButtonHint
+    | Qt.WindowType.WindowMinimizeButtonHint
+)
+
+
+def _normalize_dialog_window_flags(dialog: QDialog) -> None:
+    """Give an app dialog the uniform flag set (idempotent, keeps extra flags).
+
+    Qt's own ``QFileDialog``/``QMessageBox`` are skipped: their frame can be
+    platform-native, where forcing hints either duplicates the OS buttons or
+    silently de-natives the dialog. Every other app window — including the
+    compact ``_csd_opt_out`` prompts, where the hints change nothing because the
+    CSD still shows a close-only row — gets the same four hints as the editor.
+    """
+    if isinstance(dialog, _CLOSE_ONLY_DIALOG_TYPES):
+        return
+    flags = dialog.windowFlags()
+    wanted = (flags & ~Qt.WindowType.WindowType_Mask) | _DIALOG_WINDOW_FLAGS
+    if wanted == flags:
+        return
+    was_visible = False
+    try:
+        was_visible = dialog.isVisible()
+    except RuntimeError:
+        return
+    dialog.setWindowFlags(wanted)
+    if was_visible:
+        # setWindowFlags hides a visible widget; re-show so the Polish-path
+        # decoration of a dialog that is already up does not make it vanish.
+        dialog.show()
+
+
 def _wants_window_controls(dialog: QDialog) -> bool:
     """Default answer to "does this dialog get minimize **and** maximize?".
 
@@ -245,6 +289,8 @@ def decorate_dialog(
     # stack a second CustomTitleBar.HEIGHT onto the layout top margin.
     if bool(getattr(dialog, "_csd_decorating", False)):
         return None
+
+    _normalize_dialog_window_flags(dialog)
 
     if show_minimize is None or show_maximize is None:
         wants_controls = _wants_window_controls(dialog)
