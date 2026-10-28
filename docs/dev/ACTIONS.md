@@ -210,21 +210,31 @@ Tab chrome strings live under `tabs/<tab>/resources/i18n/`.
   the active layout) — lazy targets with `ensure_visible` / `resolve_widget`
   stay listed. The shortcut binder passes `chrome_only=False`
   (`ActionShortcutBinder`, `ui/actions/binder`), so a hidden button's shortcut still fires;
-- optional word filter on id / keys / translated label & description /
-  breadcrumb / topic (every whitespace-separated token must match);
+- optional word filter on id / keys / translated label / breadcrumb / topic
+  (every whitespace-separated token must match). **The description is not
+  searched in Find Action** (owner decision 2026-10-28): it is prose about the
+  action, not a name for it, and it multiplied every haystack by one more key in
+  four languages — `compute_action_haystacks(..., include_description=False)`.
+  Settings → Keyboard keeps description matching (its own surface, same helper);
 - ranks each action once per call and reuses that rank for both the filter
   and the sort (no second pass through `_best_match_rank`);
 - empty-query ordering: `platform.settings` first, then any action with a
   non-empty `sort_key` in that order, then remaining platform actions, then
   tab actions — see `_empty_list_sort_key`.
 
-`FindActionDialog` debounces `_reload()` (`_RELOAD_DEBOUNCE_MS`, palette
-`dialog.py`) so a burst of keystrokes rebuilds the row widgets once, not
-once per character — rebuilding is the expensive part (each row is a themed
-`Button` with painter layers), not the text filter itself. Keyboard-shortcut
-overrides are resolved once per rebuild (`current_keyboard_overrides` in
-`palette/common.py`) and passed into every row instead of each row walking
-`QApplication.topLevelWidgets()` on its own.
+`FindActionDialog` **reuses its rows** and debounces `_reload()`
+(`_RELOAD_DEBOUNCE_MS`, palette `dialog.py`). A reload resolves the filtered,
+ranked list and then only toggles visibility and re-inserts the surviving rows
+in order — it must never destroy and rebuild a row, because each row is a themed
+`Button` with painter layers: measured on a 70-action catalog, rebuilding cost
+**187–359 ms per keystroke** while reuse costs **0.3–1.2 ms**. Rows are
+query-independent (the breadcrumb ignores `query` by design), so keeping them
+is safe; the row cache is pruned only when an action leaves the catalog, never
+on an empty filter result (that would rebuild everything on the next backspace
+— 80 ms for 300 rows). Keyboard-shortcut overrides are resolved once per reload
+(`current_keyboard_overrides` in `palette/common.py`) and passed into every row
+instead of each row walking `QApplication.topLevelWidgets()` on its own.
+Guard: `tests/plugins/test_find_action_filter_cost.py`.
 
 ## Registration sites
 
