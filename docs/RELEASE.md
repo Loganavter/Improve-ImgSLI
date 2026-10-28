@@ -14,8 +14,8 @@ authoritative here: CI is the backstop, not the feedback loop.
 | Windows installer | `build/Windows-template/inno_setup_6.iss` (`#define MyAppVersion`) | `11.0.0` |
 | Windows setup exe name | `build/Windows-template/build_windows.py` | `Improve_ImgSLI_Setup_v11.0.0.exe` |
 | Flatpak source archive | `build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.yaml` | `Improve-ImgSLI-11.0.0.tar.gz` |
-| Toolkit pin (Flatpak) | `build/Flatpak-template/python3-modules.json` | `sli-ui-toolkit==4.0.0` |
-| Toolkit floor (AUR) | `build/AUR-template/PKGBUILD` (`python-sli-ui-toolkit>=`) | `>=4.0.0` |
+| Toolkit pin (Flatpak) | `build/Flatpak-template/python3-modules.json` | `sli-ui-toolkit==4.0.1` |
+| Toolkit floor (AUR) | `build/AUR-template/PKGBUILD` (`python-sli-ui-toolkit>=`) | `>=4.0.1` |
 | Changelog | `CHANGELOG.md` | `## [11.0.0] — <date>` |
 
 Gate: `python3 build/ci/validate_release_metadata.py` (version agreement,
@@ -49,14 +49,15 @@ python3 scripts/check_comment_citations.py
 
 `python3-modules.json` installs `sli-ui-toolkit` from the PyPI sdist. The
 current entry uses a stable alias URL
-(`.../packages/source/s/sli-ui-toolkit/sli_ui_toolkit-4.0.0.tar.gz`) and the
-`sha256` of the locally built `sli_ui_toolkit-4.0.0.tar.gz`
+(`.../packages/source/s/sli-ui-toolkit/sli_ui_toolkit-4.0.1.tar.gz`) and the
+`sha256` PyPI reports for it (`01bf29b0…` for 4.0.1 — the workflow rebuilds the
+sdist, so the hash is read BACK from the index, never from a local build)
 (`b1dce408…dfde`, artifact kept at
-`~/.cache/opencode/release-artifacts/sli_ui_toolkit-4.0.0.tar.gz`).
+`~/.cache/opencode/release-artifacts/`, plus the published hashes below).
 If the uploaded artifact differs, re-pin both URL and hash:
 
 ```bash
-sha256sum sli_ui_toolkit-4.0.0.tar.gz   # then edit the entry
+sha256sum sli_ui_toolkit-4.0.1.tar.gz   # then edit the entry
 ```
 
 Verify in a real build (cannot be done from a source checkout):
