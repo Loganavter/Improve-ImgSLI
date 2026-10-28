@@ -50,6 +50,9 @@ def _hint_side(hint: dict | None) -> str | None:
 class MultiCompareTab(TabContract):
     """Self-contained multi-image comparison tab."""
 
+    #: The control surface drops into this tab with ``side=`` only.
+    drop_hint_key = "side"
+
     def __init__(self):
         self._controller = None
         self._widget = None
@@ -78,6 +81,7 @@ class MultiCompareTab(TabContract):
     @property
     def display_name(self) -> str:
         return "Multi Compare"
+
 
     @property
     def icon(self) -> QIcon | None:
