@@ -1,0 +1,9 @@
+#!/bin/bash
+out=()
+for a in "$@"; do
+  case "$a" in
+    /nologo|/E|/T|/Fo|/Gfa|/Gfp|/O3) out+=("$a"); continue;;
+  esac
+  if [[ "$a" == /* ]]; then out+=("Z:$a"); else out+=("$a"); fi
+done
+WINEDEBUG=-all exec wine "$(dirname "$0")/../fxc.exe" "${out[@]}"

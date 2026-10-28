@@ -121,6 +121,16 @@ class GeometryApplyPolicy:
     # Leave unset for dialogs that must not remember a size — e.g. fixed-size
     # alerts (``AppMessageDialog``).
     remember_key: str | None = None
+    # Fit-to-screen idiom: before the minimum is applied, BOTH dimensions
+    # (the computed size *and* the minimum) are capped to the target screen's
+    # ``availableGeometry()`` (same screen resolution as
+    # :func:`clamp_to_screen`). Without this, a content floor taller/wider
+    # than the screen forces a window that cannot be fully shown on 720p.
+    # ``False`` keeps the pre-existing behaviour exactly — enabling it is the
+    # only way a dialog opts into the idiom, and any content that still does
+    # not fit the capped minimum has to shrink its own constants (Qt raises
+    # the window back to the layout minimum, which no policy can lower).
+    fit_screen: bool = False
 
 
 def clamp(value: int, *, minimum: int, maximum: int) -> int:
@@ -334,19 +344,11 @@ def measure_scroll_pages_stack(
     return max_content_width, max_content_height
 
 
-def clamp_to_screen(
-    width: int,
-    height: int,
-    *,
-    margin: int = 100,
-    widget: QWidget | None = None,
-) -> tuple[int, int]:
-    """Cap ``height`` against the screen the dialog will appear on.
+def _target_screen(widget: QWidget | None = None) -> Any | None:
+    """Screen a dialog will appear on: its own window's screen, else primary.
 
-    ``widget`` resolves the screen from the dialog's own top-level window
-    (``window().screen()``), falling back to the primary screen — a dialog
-    parented to a window on a secondary monitor must be clamped against that
-    monitor's height, not the primary one's.
+    A dialog parented to a window on a secondary monitor must be measured
+    against that monitor, not the primary one.
     """
     screen = None
     if widget is not None:
@@ -356,10 +358,41 @@ def clamp_to_screen(
             screen = win.screen() if hasattr(win, "screen") else None
     if screen is None:
         screen = QApplication.primaryScreen()
+    return screen
+
+
+def screen_available_size(widget: QWidget | None = None) -> tuple[int, int] | None:
+    """``availableGeometry()`` of ``widget``'s screen as ``(width, height)``.
+
+    ``None`` when no screen can be resolved (headless callers that never built
+    a ``QApplication``). This is the single measurement used by the
+    ``GeometryApplyPolicy.fit_screen`` clamp and by per-dialog content-fit
+    recipes that have to shrink their own constants first.
+    """
+    screen = _target_screen(widget)
     if screen is None:
-        return width, height
+        return None
     available = screen.availableGeometry()
-    max_height = max(1, available.height() - margin)
+    return max(1, int(available.width())), max(1, int(available.height()))
+
+
+def clamp_to_screen(
+    width: int,
+    height: int,
+    *,
+    margin: int = 100,
+    widget: QWidget | None = None,
+) -> tuple[int, int]:
+    """Cap ``height`` against the screen the dialog will appear on.
+
+    Only height: the legacy single-axis clamp kept for callers that size their
+    width from content. New code should prefer ``fit_screen`` on
+    :class:`GeometryApplyPolicy` (both axes, minimum included).
+    """
+    available = screen_available_size(widget)
+    if available is None:
+        return width, height
+    max_height = max(1, available[1] - margin)
     return width, min(height, max_height)
 
 
@@ -392,6 +425,19 @@ def apply_dialog_geometry(
             if apply_policy.width_bounds is not None:
                 bound_min_w, bound_max_w = apply_policy.width_bounds
                 final_width = clamp(final_width, minimum=bound_min_w, maximum=bound_max_w)
+
+    if apply_policy.fit_screen:
+        available = screen_available_size(dialog)
+        if available is not None:
+            screen_width, screen_height = available
+            # Both axes, size AND floor: a minimum taller than the screen is
+            # what makes a 720p dialog unopenable in full. Qt still wins over
+            # this cap when the layout's own minimum is larger, so a
+            # too-tall-content dialog must shrink its content constants.
+            final_width = min(final_width, screen_width)
+            final_height = min(final_height, screen_height)
+            min_w = min(min_w, screen_width)
+            min_h = min(min_h, screen_height)
 
     if apply_policy.update_minimum:
         dialog.setMinimumSize(min_w, min_h)

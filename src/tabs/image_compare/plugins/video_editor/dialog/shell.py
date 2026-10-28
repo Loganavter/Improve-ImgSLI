@@ -27,10 +27,13 @@ from tabs.image_compare.plugins.video_editor.dialog.sections import (
     create_toolbar,
 )
 from tabs.image_compare.plugins.video_editor.layout_geometry import (
+    MIN_VIDEO_EDITOR_BOTTOM_CONTAINER_HEIGHT_PX,
     MIN_VIDEO_EDITOR_DIALOG_HEIGHT_PX,
     MIN_VIDEO_EDITOR_PREVIEW_HEIGHT_PX,
     MIN_VIDEO_EDITOR_PREVIEW_WIDTH_PX,
     MIN_VIDEO_EDITOR_SETTINGS_WIDTH_PX,
+    VIDEO_EDITOR_INITIAL_HEIGHT_PX,
+    VIDEO_EDITOR_INITIAL_WIDTH_PX,
     VIDEO_EDITOR_TOP_HORIZONTAL_SPACING_PX,
 )
 from tabs.image_compare.plugins.video_editor.dialog.export import VideoEditorDialogExport
@@ -85,7 +88,13 @@ class VideoEditorDialog(ThemedDialog):
             self.current_language = export_controller.store.settings.current_language
 
         self.setWindowTitle(tr("video.video_editor_exporter", self.current_language))
-        self.resize(scaled_px(1200), scaled_px(850))
+        # Opening size is re-budgeted against the screen by
+        # ``apply_top_row_geometry`` (see layout_geometry's fit-to-screen
+        # section) — a 720p screen cannot show the design size.
+        self.resize(
+            scaled_px(VIDEO_EDITOR_INITIAL_WIDTH_PX),
+            scaled_px(VIDEO_EDITOR_INITIAL_HEIGHT_PX),
+        )
         self.setMinimumHeight(scaled_px(MIN_VIDEO_EDITOR_DIALOG_HEIGHT_PX))
 
         self.setWindowFlags(
@@ -261,7 +270,9 @@ class VideoEditorDialog(ThemedDialog):
         except Exception:
             pass
         bottom_layout.addWidget(self.scroll_area, stretch=1)
-        self.bottom_container.setMinimumHeight(scaled_px(250))
+        self.bottom_container.setMinimumHeight(
+            scaled_px(MIN_VIDEO_EDITOR_BOTTOM_CONTAINER_HEIGHT_PX)
+        )
         self.vertical_splitter.addWidget(self.bottom_container)
         self.vertical_splitter.setStretchFactor(0, 1)
         self.vertical_splitter.setStretchFactor(1, 0)
