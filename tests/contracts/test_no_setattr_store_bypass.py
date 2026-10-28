@@ -30,7 +30,9 @@ RATCHET: ``ALLOWLIST`` pins every pre-existing site found on the current
 tree; ``PENDING_MIGRATION`` tolerates the persistence-path offenders that
 are being fixed in parallel. A new ``setattr`` bypass fails; a stale
 ``PENDING_MIGRATION`` entry (site already migrated) fails too, forcing
-exemption cleanup at integration.
+exemption cleanup at integration. ``ALLOWLIST`` is checked for staleness
+the same way — an entry that no longer matches a live bypass fails, so the
+exemption lists can only shrink (see the note at ``test_no_setattr_store_bypass``).
 
 Known blind spot (documented, not scanned): ``setattr`` whose target is
 itself a ``Call`` (``_get_chain`` returns ``None``), e.g.
@@ -124,8 +126,6 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         ("src/tabs/image_compare/services/analysis/cached_diff.py", 37, "render_cache"),
         ("src/tabs/image_compare/services/analysis/cached_diff.py", 42, "render_cache"),
         ("src/tabs/image_compare/services/analysis/cached_diff.py", 55, "self.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/services/analysis/cached_diff.py", 274, "self.store.viewport.session_data.render_cache"),
-        ("src/tabs/image_compare/services/analysis/cached_diff.py", 279, "self.store.viewport.session_data.render_cache"),
         ("src/tabs/image_compare/services/analysis/metrics.py", 109, "self.store.viewport.session_data.image_state"),
         ("src/tabs/image_compare/services/analysis/metrics.py", 123, "self.store.viewport.session_data.image_state"),
         # NOTE: lines shifted 355/357 → 359/361 by the S3 engine-next export
@@ -135,16 +135,16 @@ ALLOWLIST: frozenset[tuple[str, int, str]] = frozenset(
         # query_active_magnifier_divider_thickness body removed).
         ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 356, "self.store.viewport.session_data.render_cache"),
         ("src/tabs/image_compare/services/snapshot_render_plan_builder.py", 358, "self.store.viewport.session_data.render_cache"),
-        # -- UI settings / transient interpolation previews --
+        # -- UI settings persistence writes --
         ("src/tabs/image_compare/ui/settings_persistence.py", 68, "image_state"),
         ("src/tabs/image_compare/ui/settings_persistence.py", 69, "image_state"),
-        ("src/tabs/image_compare/ui/transient_interpolation.py", 115, "host.store.viewport.render_config"),
-        ("src/tabs/image_compare/ui/transient_interpolation.py", 121, "host.store.viewport.render_config"),
-        ("src/tabs/image_compare/ui/transient_interpolation.py", 229, "host.store.viewport.render_config"),
-        ("src/tabs/image_compare/ui/transient_interpolation.py", 240, "host.store.viewport.render_config"),
+        # transient_interpolation.py now has ZERO setattr bypasses — both
+        # fallbacks dispatch SetInterpolationMethodAction and drop the write
+        # when no dispatcher exists (task-transient-interp-setattr-2026-10-28);
+        # the former 115/121/229/240 entries were swept as dead.
         ("src/tabs/image_compare/use_cases/navigation.py", 140, "controller.store.viewport.render_config"),
-        ("src/tabs/image_compare/use_cases/slot.py", 412, "document"),
-        ("src/tabs/image_compare/use_cases/slot.py", 456, "document"),
+        # slot.py's current-index/document writes now dispatch too; the former
+        # 412/456 `setattr(document, ...)` entries were swept as dead.
         # -- unified list picker document list writes --
         ("src/ui/widgets/unified_list_picker/common.py", 246, "document"),
         ("src/ui/widgets/unified_list_picker/common.py", 248, "document"),
@@ -222,4 +222,19 @@ def test_no_setattr_store_bypass():
         "Stale PENDING_MIGRATION entries — the site already migrated, "
         f"delete the exemption:\n  "
         + "\n  ".join(f"{p}:{ln} — setattr({label}, ...)" for p, ln, label in stale)
+    )
+    # Both exemption sets are RATCHET-ONLY-SHRINK: each entry is a debt pinned
+    # to one concrete `path:line` on the current tree, and it is only consulted
+    # when a bypass is found. Without this check a migrated/renamed site leaves
+    # a permanently dead entry that no other test can notice — the list would
+    # silently drift away from the real surface and hide a later regression
+    # behind an exemption nobody can justify. Dead ⇒ delete the entry (never the
+    # scan, never widen the allowlist).
+    dead = sorted(set(ALLOWLIST) - found)
+    assert not dead, (
+        "Dead ALLOWLIST entries — the site no longer produces a setattr Store "
+        "bypass (migrated to dispatch, or moved/renamed so the pinned line is "
+        "gone). Delete the entry: if the site merely moved, the next run flags "
+        "its new path:line as unexpected — re-pin that line, do not widen.\n  "
+        + "\n  ".join(f"{p}:{ln} — setattr({label}, ...)" for p, ln, label in dead)
     )
