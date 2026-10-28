@@ -73,8 +73,42 @@ class ThumbnailCoordinator:
         except Exception:
             logger.debug("frame-count source wiring skipped", exc_info=True)
 
+    def _gate_deleted(self) -> bool:
+        """True once the settle gate's C++ objects are gone.
+
+        ``SettleGate`` hangs off the presenter, which ``cleanup`` /
+        ``_on_view_destroyed`` ``deleteLater()``, so its ``QTimer`` child dies
+        while these Python wrappers survive: ``cancel``/``ping`` then raise
+        ``RuntimeError: Internal C++ object ... already deleted`` from a
+        teardown with nothing left to stop (owner traceback 2026-10-28:
+        ``closeEvent``→``cleanup``→``cancel``→``QTimer.stop``).
+        """
+        try:
+            import shiboken6
+
+            return not shiboken6.isValid(self._visible_refresh)
+        except Exception:
+            return False
+
+    def _cancel_visible_refresh(self) -> None:
+        if self._gate_deleted():
+            return
+        try:
+            self._visible_refresh.cancel()
+        except RuntimeError:
+            # Gate alive, its QTimer already dead (half-torn-down parent).
+            logger.debug("thumbnail settle gate timer already deleted; cancel skipped")
+
+    def _ping_visible_refresh(self) -> None:
+        if self._gate_deleted():
+            return
+        try:
+            self._visible_refresh.ping()
+        except RuntimeError:
+            logger.debug("thumbnail settle gate timer already deleted; ping skipped")
+
     def detach_view(self):
-        self._visible_refresh.cancel()
+        self._cancel_visible_refresh()
         # No post-detach add_thumbnail storms: retire the live wave so late
         # worker completions drop on arrival (fail-open kept — the
         # generation token and membership filter still apply on doubt).
@@ -129,7 +163,7 @@ class ThumbnailCoordinator:
         return max(20, min(visible_count, 200))
 
     def generate_thumbnails(self):
-        self._visible_refresh.cancel()
+        self._cancel_visible_refresh()
         try:
             from tabs.image_compare.debug import ic_thumbnail_debug
             tl = getattr(self.view, "timeline", None) if self.view is not None else None
@@ -280,7 +314,7 @@ class ThumbnailCoordinator:
             ic_thumbnail_debug("thumb_coord viewportChanged ping gate_pending=%s", self._visible_refresh.is_pending())
         except Exception:
             pass
-        self._visible_refresh.ping()
+        self._ping_visible_refresh()
 
     def on_timeline_zoom_changed(self, *_args):
         # Zoom reshuffles geometry, not content — settle first, don't refit.
@@ -289,7 +323,7 @@ class ThumbnailCoordinator:
             ic_thumbnail_debug("thumb_coord zoomChanged ping gate_pending=%s", self._visible_refresh.is_pending())
         except Exception:
             pass
-        self._visible_refresh.ping()
+        self._ping_visible_refresh()
 
     def on_timeline_viewport_state_changed(self, _state=None):
         # Toolkit TimelineWidget emits viewportChangedState after its own
@@ -301,7 +335,7 @@ class ThumbnailCoordinator:
             ic_thumbnail_debug("thumb_coord viewportChangedState cancel+refresh gate_pending=%s", self._visible_refresh.is_pending())
         except Exception:
             pass
-        self._visible_refresh.cancel()
+        self._cancel_visible_refresh()
         self._refresh_visible_thumbnails()
 
     def _read_zoom_level(self) -> float | None:
@@ -452,7 +486,9 @@ class ThumbnailCoordinator:
             return list(range(min(10, total_frames)))
 
     def cleanup(self):
-        self._visible_refresh.cancel()
+        # Idempotent: closeEvent teardown and view.destroyed both land here (the
+        # second on a dead presenter) — gate cancel must survive missing C++.
+        self._cancel_visible_refresh()
         self._feed_generation = None
         try:
             teardown = getattr(self.thumbnail_service, "teardown", None)

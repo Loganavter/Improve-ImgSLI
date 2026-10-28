@@ -623,6 +623,10 @@ class VideoEditorDialog(ThemedDialog):
         # Down fallback (see shared_toolkit.ui.decorate_dialog).
         register_dialog_title_bar_navigation(self)
 
+        # Children (the timeline) install their own window event filters during
+        # *their* showEvent, i.e. before this one — keep the CSD chrome filter
+        # ahead of them or the chrome freezes at its show-time size.
+
         if hasattr(self, "timeline"):
             QTimer.singleShot(100, self._fit_timeline_if_alive)
         self._position_stop_export_button()
@@ -656,8 +660,36 @@ class VideoEditorDialog(ThemedDialog):
                 exc_info=True,
             )
         if hasattr(self, "presenter"):
-            self.presenter.cleanup()
+            self._cleanup_presenter_safe()
         super().closeEvent(event)
+
+    def _cleanup_presenter_safe(self) -> None:
+        """Tear the presenter down once, and never through a dead wrapper.
+
+        ``cleanup`` (and ``_on_view_destroyed`` on ``view.destroyed``) ends
+        with ``deleteLater()`` on the presenter, whose C++ object owns the
+        coordinators' children — ``SettleGate`` and its ``QTimer``,
+        ``QThreadPool``s — so once that deletion has been processed the
+        Python wrapper still answers attribute lookups while every C++ call
+        inside it raises ``RuntimeError: Internal C++ object ... already
+        deleted`` (owner traceback 2026-10-28: ``closeEvent`` → ``cleanup`` →
+        ``thumbnails.cleanup`` → ``SettleGate.cancel`` → ``QTimer.stop``).
+        In that state the teardown already ran and its timers died with it:
+        re-entering it can only crash, so skip and log.
+        """
+        presenter = self.presenter
+        try:
+            import shiboken6
+
+            alive = bool(shiboken6.isValid(presenter))
+        except Exception:
+            alive = True
+        if not alive:
+            logger.debug(
+                "video editor presenter already torn down; close cleanup skipped"
+            )
+            return
+        presenter.cleanup()
 
     def _contribute_find_actions(self) -> None:
         try:
