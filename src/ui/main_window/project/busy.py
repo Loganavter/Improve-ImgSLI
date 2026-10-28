@@ -31,6 +31,40 @@ def _show_project_error(owner: "MainWindowProjectIo", title: str, text: str) -> 
     AppMessageDialog.warning(owner._window, title=title, text=text)
 
 
+def _notify_project_saved(owner: "MainWindowProjectIo", path: str) -> None:
+    """Tray state + system notification after a project is written.
+
+    The save flow used to end in the in-app toast only - and in nothing at all
+    when the toast manager had not resolved (owner report 2026-10-28: "кнопка
+    сохранить проект не шлёт тост в аппе и в систему"). A project save is the
+    same promise as an image export, which already notifies
+    (``image_export/save_flow.py::_on_success_notify``).
+    """
+    import os
+
+    window = owner._window
+    actions = getattr(window, "action_registry", None)
+    if actions is None:
+        return
+    try:
+        actions.set_last_saved_path(path)
+        actions.update_tray_actions_visibility()
+    except Exception:
+        logger.exception("Project save: tray refresh failed")
+    settings = getattr(getattr(window, "store", None), "settings", None)
+    if not bool(getattr(settings, "system_notifications_enabled", True)):
+        return
+    try:
+        actions.notify_system(
+            owner._tr("msg.saved", "Saved"),
+            f"{owner._tr('msg.saved', 'Saved')}: {path}",
+            image_path=path if os.path.isfile(path) else None,
+            timeout_ms=4000,
+        )
+    except Exception:
+        logger.exception("Project save: system notification failed")
+
+
 def _begin_project_busy(owner: "MainWindowProjectIo", message: str):
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication
@@ -38,7 +72,12 @@ def _begin_project_busy(owner: "MainWindowProjectIo", message: str):
     QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
     toast = owner._project_toast_manager()
     toast_id = None
-    if toast is not None:
+    if toast is None:
+        # Silent before: the whole progress surface vanished with the manager.
+        logger.warning(
+            "Project busy: no toast manager on the window - progress stays invisible"
+        )
+    else:
         try:
             toast_id = toast.show_toast(message, duration=0, progress=0)
         except Exception:
