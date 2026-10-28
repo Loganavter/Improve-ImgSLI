@@ -106,6 +106,33 @@ SCORECARD_ANSWER = {
 }
 
 
+def _socket_target() -> str:
+    explicit = os.environ.get("IMGSLI_MCP_CONTROL_SOCKET")
+    if explicit:
+        return explicit
+    return str(Path(os.environ.get("IMGSLI_CONTROL_DIR", "")) / "control.sock")
+
+
+def _cache_files() -> list[Path]:
+    out: list[Path] = []
+    for kind in ("gallery_ai_cache", "gallery_local_metrics", "gallery_jev_cache", "gallery_vlm_cache"):
+        directory = _cache_dir(kind)
+        if not directory.is_dir():
+            continue
+        out.extend(p for p in directory.glob("*.json") if p.name != "version.json")
+    return out
+
+
+def _line_ms(line: str) -> int:
+    """Wall-clock ms of a log line (``YYYY-MM-DD HH:MM:SS,mmm``), 0 when absent."""
+    try:
+        stamp = line.split(" - ")[0].strip()
+        parsed = time.strptime(stamp, "%Y-%m-%d %H:%M:%S,%f")
+        return int(time.mktime(parsed) * 1000) + int(stamp[-3:])
+    except Exception:
+        return 0
+
+
 def _stub_router(delay_s: float = 0.0):
     """One stub, three question shapes: profile, pairwise, scorecard."""
 
@@ -117,7 +144,10 @@ def _stub_router(delay_s: float = 0.0):
             return json.dumps(PROFILE_ANSWER, ensure_ascii=False)
         if "WINNER" in text.upper():
             return "WINNER: A"
-        if '"ranking"' in text or "rank aliases" in text:
+        # The prompt is JSON-encoded inside the body, so its quotes arrive
+        # escaped: match the bare word, not a quoted token (measured: a quoted
+        # match never fired and the ranker got a scorecard -> "unusable response").
+        if "ranking" in text or "rank aliases" in text:
             aliases = sorted(set(re.findall(r"img_\d+", text)), key=lambda a: int(a[4:]))
             return json.dumps(
                 {"ranking": aliases, "score": 0.9, "reason": "stub rank"},
@@ -183,6 +213,8 @@ def _read_entries(kind: str) -> list[dict]:
     if not directory.is_dir():
         return out
     for path in sorted(directory.glob("*.json")):
+        if path.name == "version.json":
+            continue
         try:
             out.append(json.loads(path.read_text(encoding="utf-8")))
         except Exception:
@@ -291,7 +323,11 @@ def _control_client(sock: Path):
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--folder", type=Path, default=None, help="series to open (made when absent)")
-    parser.add_argument("--images", type=int, default=4)
+    parser.add_argument(
+        "--scenario", choices=("chain", "reset"), default="chain",
+        help="chain = the AI chain; reset = a reset in the middle of an ACTIVE run",
+    )
+    parser.add_argument("--images", type=int, default=0, help="default 4 (chain), 6 (reset)")
     parser.add_argument("--timeout", type=float, default=300.0)
     parser.add_argument("--quiet", type=float, default=12.0)
     parser.add_argument("--delay", type=float, default=0.0, help="stub latency per answer (a slow provider)")
@@ -318,10 +354,13 @@ def main(argv: list[str] | None = None) -> int:
     stale = _kill_leftover_apps()
     if stale:
         time.sleep(2.0)
+    images = args.images or (6 if args.scenario == "reset" else 4)
+    delay = args.delay or (0.5 if args.scenario == "reset" else 0.0)
     folder = (args.folder or Path("/tmp/opencode/w7-ai-chain-series")).resolve()
-    make_images(folder, max(2, args.images))
+    make_images(folder, max(2, images))
 
     verdict: dict = {
+        "scenario": args.scenario,
         "folder": str(folder),
         "domain": "ai",
         "lease": os.environ.get("LIVE_LEASE"),
@@ -335,7 +374,7 @@ def main(argv: list[str] | None = None) -> int:
             socket_path.unlink()
         except OSError:
             pass
-    stub = live_fixtures.ai_stub_server(_stub_router(args.delay))
+    stub = live_fixtures.ai_stub_server(_stub_router(delay))
     app_pid: int | None = None
     try:
         config_home = os.environ.get("XDG_CONFIG_HOME")
@@ -370,6 +409,37 @@ def main(argv: list[str] | None = None) -> int:
         verdict["stub_base_url"] = stub.base_url
 
         os.environ["IMGSLI_TRACE"] = "1"
+        reset_info: dict = {}
+        if args.scenario == "reset":
+            import threading
+
+            def _reset_when_running() -> None:
+                deadline = time.monotonic() + 120.0
+                while time.monotonic() < deadline:
+                    text = ""
+                    try:
+                        text = args.log.read_text(encoding="utf-8", errors="replace")
+                    except OSError:
+                        pass
+                    if "analyze start" in text and "jev rank" not in text:
+                        break
+                    time.sleep(0.3)
+                try:
+                    control_now = _control_client(Path(_socket_target()))
+                    before = len(_cache_files())
+                    reset_info["state_before"] = control_now.call(
+                        "get_state", path="tabs.image_gallery"
+                    ).get("state")
+                    reset_info["cache_files_before"] = before
+                    reset_info["at_ms"] = int(time.time() * 1000)
+                    control_now.call("run_action", action_id="gallery.reset-metrics")
+                    reset_info["fired"] = True
+                except Exception as exc:  # noqa: BLE001 — a failed reset is the verdict
+                    reset_info["fired"] = False
+                    reset_info["error"] = f"{type(exc).__name__}: {exc}"
+
+            watcher = threading.Thread(target=_reset_when_running, name="reset-watcher", daemon=True)
+            watcher.start()
         from devtools import live_gallery_ai_run as driver
 
         code = driver.main([
@@ -428,6 +498,13 @@ def main(argv: list[str] | None = None) -> int:
         state = control.call("get_state", path="tabs.image_gallery")
         verdict["gallery_state"] = state.get("state")
         log_tail = control.call("read_log", n=400).get("lines") or []
+        # The in-app ring keeps DEBUG lines, so the local pass's own reasons are
+        # readable here even when the on-disk log is INFO-only.
+        deep = control.call("read_log", level="DEBUG", n=4000).get("lines") or []
+        needles = ("local metrics", "not persisted", "previous mode", "proxy", "chunk")
+        verdict["local_pass_log"] = [
+            row["text"] for row in deep if any(n in row.get("text", "").lower() for n in needles)
+        ][:25]
         verdict["log_lines"] = {
             "judge_run_done": [ln["text"] for ln in log_tail if "judge run done" in ln.get("text", "")],
             "profile_source": [ln["text"] for ln in log_tail if "profile source" in ln.get("text", "")],
@@ -461,6 +538,20 @@ def main(argv: list[str] | None = None) -> int:
         and "data:image" in json.dumps(scorecard_calls[0].get("body") or {})
     )
 
+    request_text = json.dumps(
+        (scorecard_calls[0].get("body") if scorecard_calls else {}) or {},
+        ensure_ascii=False,
+    )
+    measured_marker = "LOCAL MEASUREMENTS (axes the model is NOT asked to score)"
+    measured_block = ""
+    if measured_marker in request_text:
+        measured_block = request_text.split(measured_marker, 1)[1][:600]
+    asked = [SHARED_AXIS, "noise", "exposure", JUDGE_ONLY_AXIS, "micro_contrast", "colour_banding"]
+    verdict["measured_block_present"] = bool(measured_block)
+    verdict["measured_block_mentions_asked_axis"] = [
+        axis for axis in asked if axis in measured_block.lower()
+    ]
+
     ai_entries = _ai_axes(_read_entries("gallery_ai_cache"))
     local_entries = _read_entries("gallery_local_metrics")
     local_values = _local_axis_values(local_entries)
@@ -483,9 +574,10 @@ def main(argv: list[str] | None = None) -> int:
         "shared_axis_is_the_judge_number": bool(ai_entries) and all(
             row["axes"].get(SHARED_AXIS) == JUDGE_SHARED_SCORE for row in ai_entries
         ),
-        "local_metrics_persisted": bool(local_entries),
-        "shared_axis_local_number_differs": local_values.get(SHARED_AXIS) is not None
-        and local_values.get(SHARED_AXIS) != JUDGE_SHARED_SCORE,
+        "judge_prompt_carried_a_measured_block": verdict["measured_block_present"],
+        "measured_block_dropped_every_asked_axis": not verdict[
+            "measured_block_mentions_asked_axis"
+        ],
         "no_local_only_axis_in_the_ai_entry": bool(ai_entries) and not any(
             axis in row["axes"] for row in ai_entries for axis in LOCAL_ONLY_AXES
         ),
@@ -496,6 +588,34 @@ def main(argv: list[str] | None = None) -> int:
         ),
 
     }
+    if args.scenario == "reset":
+        reset_files = _cache_files()
+        newest = max((p.stat().st_mtime for p in reset_files), default=0.0)
+        after_ms = reset_info.get("at_ms") or 0
+        late_lines = []
+        for row in verdict["log_lines"].get("analyze_start", []) + verdict["log_lines"].get("rank", []):
+            late_lines.append(row)
+        checks = {
+            "reset_fired_during_the_run": bool(reset_info.get("fired")),
+            "run_was_active_when_it_fired": bool(reset_info.get("state_before", {}).get("item_count")),
+            "gallery_is_empty_after_drain": int(
+                (verdict.get("gallery_state") or {}).get("metrics_cache_size") or 0
+            ) == 0,
+            "no_rank_after_reset": not [
+                row for row in verdict["log_lines"].get("rank", [])
+                if "jev rank applied" in row and _line_ms(row) >= after_ms
+            ],
+            "no_cache_file_written_after_reset": newest * 1000.0 < after_ms,
+            "no_analysis_started_after_reset": not [
+                row for row in verdict["log_lines"].get("analyze_start", [])
+                if _line_ms(row) >= after_ms
+            ],
+        }
+        verdict["reset"] = reset_info
+        verdict["cache_files_after"] = len(reset_files)
+        verdict["cache_newest_mtime"] = newest
+        verdict["checks"] = checks
+
     verdict["checks"] = checks
     verdict["ok"] = all(checks.values())
     args.out.parent.mkdir(parents=True, exist_ok=True)
