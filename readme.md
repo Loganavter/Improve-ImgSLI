@@ -69,7 +69,7 @@ Each tab has its own canvas, state, help pages and export path.
 
 ## Agent control
 
-A control channel (`IMGSLI_CONTROL=1`) and an MCP server expose 23 tools:
+A control channel (`BLINKTABLE_CONTROL=1`) and an MCP server expose 23 tools:
 inventory elements, read the Store, actions, log and tracer, click, press keys,
 walk keyboard sections, list and cancel jobs, set theme or language, capture a
 surface, and wait for an asynchronous state instead of polling.
