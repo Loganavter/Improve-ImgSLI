@@ -76,7 +76,7 @@ def open_strip_thumb_menu(overlay, widget, path=None) -> bool:
     """Open the shared grid card menu for a strip thumb/pill (grid parity).
 
     Wired to each thumb's ``rightClicked`` — the exact signal the grid cards
-    use (see ``ui/card.py`` ``_bind_gallery_card``) — so the strip menu is
+    use (see ``ui/card/factory.py`` ``_bind_gallery_card``) — so the strip menu is
     produced by the same proven signal path instead of a release-time filter
     branch. Resolves the item path from the widget's ``gallery_path``
     property, else from the ``quicklook_strip_<idx>`` / ``quicklook_rank_<idx>``

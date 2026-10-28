@@ -159,12 +159,25 @@ class _ContentResources:
         self.tile_arrays = [_FakeBuffer("array0")]
         self.layer_payload: dict[tuple[int, int], tuple[int, int] | None] = {}
         self.uploads: list = []
+        #: The slot allocator that must follow a shrunk capacity (#767's seam).
+        self.capacity_sink = None
 
     def ensure_array_pipeline(self, target) -> None:
         pass
 
+    def set_capacity_sink(self, sink) -> None:
+        self.capacity_sink = sink
+
     def ensure_array_instance_capacity(self, count) -> None:
-        pass
+        """The double grants exactly what was asked, so the sink sees it.
+
+        ``TileArrayResourcesBase._adopt_capacity`` publishes the VERIFIED
+        capacity to the slot allocator; this stand-in has no driver to refuse
+        anything, and skipping the call left ``set_source`` raising
+        ``AttributeError`` (fourteen Quick-Look tests red on ``main`` after #767).
+        """
+        if self.capacity_sink is not None:
+            self.capacity_sink(count)
 
     def ensure_array_srb(self, sampler_name):
         return "srb"

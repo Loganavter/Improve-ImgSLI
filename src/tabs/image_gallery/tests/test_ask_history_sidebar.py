@@ -371,10 +371,23 @@ def test_flyout_history_is_nav_owned_while_open(qtbot):
 
 
 def test_toolbar_ai_toggle_is_owned_by_the_toolbar_section(qtbot):
+    """The toggle is a toolbar child, so the toolbar section owns it.
+
+    It is NOT visible: the Ask sidebar is unfinished and the owner hid the
+    affordance on 2026-10-27 (pinned by
+    ``runtime/test_toolbar_hidden_ask_sidebar.py``). The ownership contract this
+    test is about needs the WIDGET, not an offered button — asserting
+    visibility here contradicted the owner's decision and left the tier red
+    (measured on ``main`` 2026-10-28).
+    """
     widget = _widget(qtbot)
     button = widget.toolbar.ask_sidebar_button
     assert button.focusPolicy() == Qt.FocusPolicy.StrongFocus
-    assert button.isVisible() is True
+    assert button.isVisible() is False, (
+        "the Ask sidebar is unfinished: the button must stay hidden until the "
+        "feature is re-exposed (one line in GalleryToolbar)"
+    )
+    assert button.isVisibleTo(widget.toolbar) is False
 
     # The gallery tab declares the toolbar container as its first navigation
     # row (``ImageGalleryTab._toolbar_rows``) — so any toolbar child, this

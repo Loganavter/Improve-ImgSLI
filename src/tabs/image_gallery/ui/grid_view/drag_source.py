@@ -38,7 +38,7 @@ from .filters import _CardKeyFilter, _CardPressDragFilter
 # -- Wave A drag source (QDrag off gallery cards) ---------------------------
 #
 # Frozen seam with Wave B: mime ``application/x-imgsli-gallery-paths``
-# (defined ONCE in ``ui/card.py`` as ``GALLERY_PATHS_MIME``). Payload =
+# (defined ONCE in ``ui/card/factory.py`` as ``GALLERY_PATHS_MIME``). Payload =
 # newline-separated ``file://`` URLs PLUS ``QMimeData.setUrls()`` with the
 # same files (copy semantics on drop; files stay on disk — no source
 # deletion anywhere). Dragged set: current selection in ``selected_order``

@@ -22,16 +22,6 @@ the helpers/bars/histograms re-exports) stay here for the package shim.
 
 from __future__ import annotations
 
-import pathlib as _ql_path
-import sys as _ql_sys
-try:
-    __path__ = [str(_ql_path.Path(__file__).with_suffix(""))]  # type: ignore[attr-defined]
-    _pkg = _ql_sys.modules.get(__name__)
-    if _pkg is not None and not hasattr(_pkg, "__path__"):
-        setattr(_pkg, "__path__", __path__)  # type: ignore[attr-defined]
-except Exception:
-    pass
-
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, QSize, QPoint, QRect

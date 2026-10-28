@@ -301,7 +301,7 @@ def metric_dots_for_item(
       placeholder set.
 
     Grid card and list row both read this function's ``(colors, infos)``
-    (``ui/card.py`` / ``ui/list/card.py``), so the rule has exactly one
+    (``ui/card/factory.py`` / ``ui/list/card.py``), so the rule has exactly one
     implementation — the painters only place what they are handed.
 
     Returns ``(colors, infos)`` where ``infos`` is the parallel tuple of

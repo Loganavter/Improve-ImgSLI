@@ -225,6 +225,22 @@ class ImageGalleryTab(TabContract):
         self._regroup_restored_pool()
 
         self._install_modal_lifetime_watch()
+        # Register the tab's Find Action rows HERE, not only through the host's
+        # `contribute_actions` hook. That hook resolves against the ACTIVE tab
+        # and runs once at window setup, when the active session is the session
+        # picker — so a tab that relies on it alone never reaches the palette
+        # (measured 2026-10-28 on a live lease: 170 actions listed, ZERO
+        # `gallery.*`, while the same `register_actions` call in-process
+        # registers all six). Image Compare registers after its page is built
+        # for the same reason. The widget exists by now, so each descriptor
+        # carries a real target, and `ActionRegistry.register` is idempotent
+        # (a dict write), so a later host refresh is harmless.
+        try:
+            from ui.actions.registry import get_action_registry
+
+            _registration.register_actions(self, get_action_registry())
+        except Exception:
+            pass
         return self._widget
 
     def _regroup_restored_pool(self) -> None:

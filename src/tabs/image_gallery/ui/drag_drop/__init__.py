@@ -938,7 +938,7 @@ def install_series_header_menu(owner, controller=None) -> bool:
         return False
 
 
-# Canonical mime lives in ``ui/card.py`` (Wave A, defined ONCE). Payload rule
+# Canonical mime lives in ``ui/card/factory.py`` (Wave A, defined ONCE). Payload rule
 # (verbatim): newline-separated ``file://`` URLs in ``QMimeData.data(mime)``
 # PLUS ``setUrls()``.
 from tabs.image_gallery.ui.card import GALLERY_PATHS_MIME
