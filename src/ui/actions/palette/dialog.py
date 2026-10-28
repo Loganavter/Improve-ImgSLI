@@ -29,9 +29,13 @@ from utils.resource_loader import resource_path
 logger = logging.getLogger(APP_LOGGER_NAME)
 
 _DIALOG_WIDTH = 560
-_DIALOG_HEIGHT = 420# Coalesce fast typing into one rebuild instead of tearing down/recreating
-# every row (Button widgets with painter layers) on each keystroke.
-_RELOAD_DEBOUNCE_MS = 90
+_DIALOG_HEIGHT = 420# Filter on the keystroke, like GIMP's action search
+# (``app/widgets/gimpsearchpopup.c``: ``keyword_entry_key_release_event``
+# rebuilds and selects row 0 on every key release - no debounce at all). The
+# reload is now cheap because rows are reused (~1 ms for a 70-action catalog),
+# so a timer only added the feeling of a sticky search box. 0 = coalesce the
+# burst that arrives inside one event-loop turn, do not delay a keystroke.
+_RELOAD_DEBOUNCE_MS = 0
 
 
 def _is_valid(obj) -> bool:
@@ -449,6 +453,8 @@ class FindActionDialog(ThemedDialog):
                     index = i
                     break
         self._set_current_index(index if has_rows else -1)
+        if has_rows and index == 0:
+            self._scroll_to_top()
 
     def _set_current_index(self, index: int) -> None:
         if not self._rows:
@@ -464,6 +470,29 @@ class FindActionDialog(ThemedDialog):
         for i, row in enumerate(self._rows):
             row.set_current(i == index)
         self._scroll_to_current()
+
+    def _scroll_to_top(self) -> None:
+        """Put the results back at the top after a query change.
+
+        GIMP's search popup rebuilds its results on every key release and then
+        selects row 0 (``gimpsearchpopup.c``), which also returns the list to
+        the top. "Ensure visible" is not the same thing: a list that is already
+        scrolled down keeps its position when row 0 is merely re-selected, so
+        the new best match could sit above the viewport.
+        """
+        if not _is_valid(self._scroll):
+            return
+        bar = self._scroll.verticalScrollBar()
+        bar.setValue(bar.minimum())
+        # The rows were just re-ordered/hidden; their geometry lands on the next
+        # layout pass, after which the scrollbar range can still shift.
+        QTimer.singleShot(0, self._reassert_scroll_top)
+
+    def _reassert_scroll_top(self) -> None:
+        if not _is_valid(self) or not _is_valid(self._scroll):
+            return
+        bar = self._scroll.verticalScrollBar()
+        bar.setValue(bar.minimum())
 
     def _scroll_to_current(self) -> None:
         if self._current_index < 0 or self._current_index >= len(self._rows):

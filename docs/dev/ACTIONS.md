@@ -222,8 +222,14 @@ Tab chrome strings live under `tabs/<tab>/resources/i18n/`.
   non-empty `sort_key` in that order, then remaining platform actions, then
   tab actions — see `_empty_list_sort_key`.
 
-`FindActionDialog` **reuses its rows** and debounces `_reload()`
-(`_RELOAD_DEBOUNCE_MS`, palette `dialog.py`). A reload resolves the filtered,
+`FindActionDialog` **reuses its rows** and reloads on the keystroke —
+`_RELOAD_DEBOUNCE_MS = 0` (palette `dialog.py`); a zero timer still coalesces a
+burst that arrives inside one event-loop turn but never delays a keypress. The
+principle is GIMP's action search (`app/widgets/gimpsearchpopup.c`,
+`keyword_entry_key_release_event`): filter on every key release, then select the
+first row, which also returns the list to the top — so the palette calls
+`_scroll_to_top()` after each query change (`ensureWidgetVisible` alone leaves a
+list that is already scrolled down where it was). A reload resolves the filtered,
 ranked list and then only toggles visibility and re-inserts the surviving rows
 in order — it must never destroy and rebuild a row, because each row is a themed
 `Button` with painter layers: measured on a 70-action catalog, rebuilding cost
@@ -234,7 +240,9 @@ on an empty filter result (that would rebuild everything on the next backspace
 — 80 ms for 300 rows). Keyboard-shortcut overrides are resolved once per reload
 (`current_keyboard_overrides` in `palette/common.py`) and passed into every row
 instead of each row walking `QApplication.topLevelWidgets()` on its own.
-Guard: `tests/plugins/test_find_action_filter_cost.py`.
+Guards: `tests/plugins/test_find_action_filter_cost.py` (row identity, no
+description matching) and `tests/plugins/test_find_action_live_query.py` (query
+applied on the keystroke, scroll back to the top).
 
 ## Registration sites
 
