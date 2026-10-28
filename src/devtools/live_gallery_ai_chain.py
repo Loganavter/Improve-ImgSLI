@@ -432,7 +432,30 @@ def main(argv: list[str] | None = None) -> int:
                     ).get("state")
                     reset_info["cache_files_before"] = before
                     reset_info["at_ms"] = int(time.time() * 1000)
-                    control_now.call("run_action", action_id="gallery.reset-metrics")
+                    # Drive the RESET the way a user does (card context menu).
+                    # The Find Action id ``gallery.reset-metrics`` exists in the
+                    # code but is NOT registered in the live palette (measured
+                    # 2026-10-28: 170 actions, zero ``gallery.*``; the same call
+                    # in-process registers all six), so run_action cannot be the
+                    # proof path here.
+                    cards = [
+                        row for row in (control_now.call("ui_elements").get("elements") or [])
+                        if row.get("role") == "card" and row.get("label") == "Button"
+                    ]
+                    if not cards:
+                        raise RuntimeError("no gallery card to open the menu on")
+                    control_now.call("ui_click", id=cards[0]["id"], button="right")
+                    time.sleep(0.8)
+                    rows = [
+                        row for row in (control_now.call("ui_elements").get("elements") or [])
+                        if row.get("role") == "menu-row"
+                        and row.get("visible")
+                        and "reset metrics" in str(row.get("label", "")).lower()
+                    ]
+                    if not rows:
+                        raise RuntimeError("the card menu has no 'Reset metrics cache' row")
+                    reset_info["menu_row"] = rows[0].get("label")
+                    control_now.call("ui_click", id=rows[0]["id"])
                     reset_info["fired"] = True
                 except Exception as exc:  # noqa: BLE001 — a failed reset is the verdict
                     reset_info["fired"] = False
