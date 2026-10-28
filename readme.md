@@ -2,6 +2,8 @@
   <img src="src/resources/icons/blinktable-logo.svg" alt="BlinkTable" width="384">
 </p>
 
+<h1 align="center">BlinkTable</h1>
+
 <p align="center">
   <a href="https://github.com/Loganavter/Improve-ImgSLI/releases/latest"><img src="https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square"></a>
@@ -12,8 +14,6 @@
 <p align="center"><strong>BlinkTable — a workspace for serious image and video comparison: compare, measure, prove.</strong></p>
 
 <p align="center">Read this in other languages: <a href="README.ru.md">Русский</a></p>
-
----
 
 ## What it is
 
