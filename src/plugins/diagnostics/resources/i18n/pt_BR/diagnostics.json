@@ -9,6 +9,11 @@
     "open_issue": "Abrir issue",
     "close": "Fechar",
     "save_dialog_title": "Salvar relatório de diagnóstico",
+    "unclean_title": "Sessão anterior",
+    "unclean_body": "A sessão anterior terminou sem uma saída normal. O relatório de diagnóstico incluirá o final do log anterior e, se o aplicativo falhou de forma abrupta, o rastreamento da falha. Nada é enviado automaticamente — você escolhe Copiar, Salvar ou Abrir issue.",
+    "unclean_create": "Criar relatório",
+    "unclean_dismiss": "Agora não",
+    "unclean_never": "Não perguntar novamente",
     "action": {
       "create_report": "Criar relatório de diagnóstico",
       "create_report_desc": "Gerar um relatório de diagnóstico local e escolher Copiar / Salvar / Abrir issue."

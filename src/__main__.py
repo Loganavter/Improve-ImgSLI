@@ -28,7 +28,13 @@ sys.path.insert(0, application_path)
 from core.windowed_stdio import enable_faulthandler, ensure_stdio
 
 ensure_stdio()
-enable_faulthandler()
+_FAULT_DUMP_FILE = enable_faulthandler()
+
+#: The previous session's marker (``plugins.diagnostics.session_marker``) and the
+#: module that wrote/reads it, resolved in :func:`_begin_session_marker`.
+_PREVIOUS_SESSION = None
+_SESSION_MARKER = None
+
 
 # Early startup sink (see core/startup_early_log.py): everything below until
 # `core.bootstrap._configure_logging` runs has no log handler yet, so a plain
@@ -222,7 +228,50 @@ def _maybe_prewarm_font_metrics() -> None:
     early_mark("font.prewarm", cost_ms=f"{cost_ms:.1f}", family=family)
 
 
+
+def _begin_session_marker() -> None:
+    """Claim this session, after reading what the PREVIOUS one left behind.
+
+    A normal exit rewrites the marker as clean; anything else (task-manager kill,
+    power cut, segfault, a startup that died) leaves ``clean: false`` and the next
+    start offers a diagnostics report. Called first thing in :func:`main`, so a
+    startup that fails later still left its marker.
+
+    Never raises: a crash DETECTOR must not be able to break startup.
+    """
+    global _PREVIOUS_SESSION, _SESSION_MARKER
+    try:
+        from plugins.diagnostics import session_marker
+
+        log_file = ""
+        try:
+            from core.log_names import APP_LOGGER_NAME
+            from sli_ui_toolkit.core.logging import get_log_directory
+
+            log_file = str(Path(get_log_directory(APP_LOGGER_NAME)) / "log.txt")
+        except Exception:
+            log_file = ""
+        version = ""
+        try:
+            from core.constants import AppConstants
+
+            version = str(AppConstants.APP_VERSION)
+        except Exception:
+            version = ""
+        _SESSION_MARKER = session_marker
+        _PREVIOUS_SESSION = session_marker.read_previous()
+        session_marker.begin_session(
+            log_file=log_file,
+            fault_file=_FAULT_DUMP_FILE or "",
+            version=version,
+        )
+    except Exception:  # noqa: BLE001 - see the docstring
+        _SESSION_MARKER = None
+        _PREVIOUS_SESSION = None
+
+
 def main():
+    _begin_session_marker()
     parser = argparse.ArgumentParser(description="BlinkTable - Main entry point")
     parser.add_argument(
         "--enable-logging",
@@ -621,11 +670,30 @@ def main():
 
     app.aboutToQuit.connect(on_quit)
     _install_sigint_quit(app)
+    if _SESSION_MARKER is not None and _PREVIOUS_SESSION is not None:
+        try:
+            if _SESSION_MARKER.classify(_PREVIOUS_SESSION) == "unclean":
+                from ui.main_window.unclean_shutdown_offer import (
+                    schedule_unclean_shutdown_offer,
+                )
+
+                schedule_unclean_shutdown_offer(window, _PREVIOUS_SESSION)
+        except Exception:
+            logging.getLogger(APP_LOGGER_NAME).debug(
+                "unclean-shutdown offer not scheduled", exc_info=True
+            )
     exit_code = app.exec()
     try:
         logging.shutdown()
     except Exception:
         pass
+    # This process is about to leave through os._exit (below), which skips atexit
+    # handlers — so the "clean exit" must be written HERE, explicitly.
+    if _SESSION_MARKER is not None:
+        try:
+            _SESSION_MARKER.mark_clean()
+        except Exception:
+            pass
     os._exit(int(exit_code) if isinstance(exit_code, int) else 0)
 
 def _write_frozen_crash_log() -> Path | None:

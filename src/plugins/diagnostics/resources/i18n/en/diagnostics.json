@@ -9,6 +9,11 @@
     "open_issue": "Open issue",
     "close": "Close",
     "save_dialog_title": "Save diagnostics report",
+    "unclean_title": "Previous session",
+    "unclean_body": "The previous session ended without a normal exit. A diagnostics report would include the end of the previous log and, if the app crashed hard, the crash traceback. Nothing is sent automatically — you choose Copy, Save, or Open issue.",
+    "unclean_create": "Create report",
+    "unclean_dismiss": "Not now",
+    "unclean_never": "Don't ask again",
     "action": {
       "create_report": "Create diagnostics report",
       "create_report_desc": "Build a local diagnostics report and choose Copy / Save / Open issue."
