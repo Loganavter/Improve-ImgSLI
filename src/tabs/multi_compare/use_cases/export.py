@@ -11,6 +11,7 @@ Audit-Meta: pattern=thin-owner reason="Save admission gate (has_exportable_pixel
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from PySide6.QtGui import QColor, QImage, QPixmap
@@ -24,6 +25,10 @@ from ui.canvas_presentation.composition import compute_native_canvas_size
 from core.log_names import APP_LOGGER_NAME
 
 logger = logging.getLogger(APP_LOGGER_NAME)
+
+#: Upper bound for the dialog's suggested filename (dialog field, not a
+#: filesystem limit — owner decision 2026-10-28).
+EXPORT_SUGGESTED_NAME_MAX_LEN = 80
 
 
 def get_save_flow(controller) -> MultiCompareSaveFlowCoordinator:
@@ -484,6 +489,64 @@ def on_quick_save_requested(controller) -> None:
         logger.exception("Multi Compare quick save failed")
 
 
+def sanitize_export_name(value: str) -> str:
+    """Replace filesystem-hostile characters in a proposed export name.
+
+    Deliberately a copy of image_compare's one-liner
+    (``services/image_export/state.py`` ``sanitize_export_name``) rather than
+    a shared import: the rule is a single ``re.sub`` and the owner chose a
+    local copy over a new cross-tab seam. Keep the two in sync if the
+    character class ever changes.
+    """
+    return re.sub(r'[\\/*?:"<>|]', "_", value)
+
+
+def _slot_export_stem(slot) -> str:
+    """Name source for one slot: ``path`` basename without extension, else ``label``."""
+    path = getattr(slot, "path", None)
+    if path:
+        try:
+            stem = Path(path).stem
+        except (TypeError, ValueError):
+            stem = ""
+        if stem:
+            return stem
+    return str(getattr(slot, "label", "") or "")
+
+
+def _filled_export_slots(controller) -> list:
+    """Slots that carry a name source (path stem or non-empty label).
+
+    Reads the active session's ``multi_compare.state`` exactly the way the
+    rest of this module does — ``controller.widget.state`` is the bound
+    store's session slot, not a second copy of it.
+    """
+    try:
+        slots = list(controller.widget.state.slots)
+    except Exception:
+        return []
+    return [slot for slot in slots if _slot_export_stem(slot)]
+
+
+def build_suggested_export_filename(controller) -> str:
+    """Suggested dialog name: ``<stem of first filled slot>_<N>images``.
+
+    N is the number of filled slots, so a four-up grid reads
+    "AniScale2_DITN_i16_75K_4images". Falls back to the bare literal
+    ``multi_compare`` when no slot carries a path or label. Total length is
+    capped at :data:`EXPORT_SUGGESTED_NAME_MAX_LEN` by trimming the stem —
+    the ``_<N>images`` tail always survives whole. No uniquification (by
+    owner decision Multi Compare has none, unlike image compare).
+    """
+    filled = _filled_export_slots(controller)
+    if not filled:
+        return "multi_compare"
+    suffix = f"_{len(filled)}images"
+    stem = sanitize_export_name(_slot_export_stem(filled[0])) or "multi_compare"
+    budget = max(1, EXPORT_SUGGESTED_NAME_MAX_LEN - len(suffix))
+    return f"{stem[:budget]}{suffix}"
+
+
 def on_save_requested(controller) -> None:
     if not slot_ids_in_tree(controller.widget.state.root):
         return
@@ -512,7 +575,7 @@ def on_save_requested(controller) -> None:
     controller.open_export_dialog(
         dialog_state=export_dialog_state_kwargs(controller),
         preview_image=preview,
-        suggested_filename="multi_compare",
+        suggested_filename=build_suggested_export_filename(controller),
         native_size=native_size,
         on_set_favorite_dir=lambda path: set_favorite_dir(controller, path),
         on_finished=lambda code, options: start_composite_save(controller, code, options),
