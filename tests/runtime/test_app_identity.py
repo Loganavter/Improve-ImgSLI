@@ -91,14 +91,18 @@ KEEPERS: dict[str, str] = {
     ),
     # -- window / desktop identity ------------------------------------------
     "src/__main__.py": (
-        "WM_CLASS trio (RESOURCE_NAME, argv[0]) plus setDesktopFileName: the "
-        "AUR desktop file still ships StartupWMClass=improve-imgsli and "
-        "pkgname=improve-imgsli, so renaming one side breaks taskbar grouping; "
-        "the file is outside this task's scope"
+        "WM_CLASS trio (RESOURCE_NAME, argv[0]) plus setDesktopFileName: all "
+        "three now say `blinktable` and must keep agreeing with the installed "
+        "desktop-entry id (StartupWMClass) — renaming one side alone breaks "
+        "taskbar grouping"
+    ),
+    "blinktable.desktop.in": (
+        "registers the LEGACY MIME type application/x-improve-imgsli so files "
+        "written by the pre-rename app keep opening"
     ),
     "build/AUR-template/blinktable.desktop": (
-        "StartupWMClass=improve-imgsli pairs with src/__main__.py's "
-        "RESOURCE_NAME, and the desktop file registers the legacy MIME type"
+        "StartupWMClass=blinktable pairs with src/__main__.py's RESOURCE_NAME, "
+        "and the desktop file registers the legacy MIME type"
     ),
     # -- packaging surfaces frozen for a release ----------------------------
     "build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.yaml": (

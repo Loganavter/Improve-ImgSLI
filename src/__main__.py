@@ -123,7 +123,7 @@ def _configure_linux_desktop_integrations() -> None:
     # desktop entry that launcher.py installs (its StartupWMClass line pins
     # the same id), so the taskbar keeps grouping the window with its icon.
     # Rename both sides together, never this one alone.
-    os.environ.setdefault("RESOURCE_NAME", "improve-imgsli")
+    os.environ.setdefault("RESOURCE_NAME", "blinktable")
 
     from core.platform_theme import apply_portal_platform_theme
 
@@ -507,11 +507,12 @@ def main():
     app.setApplicationVersion(AppConstants.APP_VERSION)
     app.setOrganizationName("BlinkTable")
     app.setOrganizationDomain("blinktable.local")
-    # Desktop-entry id stays on the pre-rename spelling: it must match the
-    # installed desktop file name that launcher.py writes, whose
-    # StartupWMClass line pins the same id as RESOURCE_NAME above.
-    # Renaming it here alone would detach the window from its launcher icon.
-    app.setDesktopFileName("improve-imgsli")
+    # Desktop-entry id: it must match the file that is actually installed, or the
+    # window detaches from its launcher icon. Two installers, two names — the
+    # Flatpak package installs `${FLATPAK_ID}.desktop` (the Flathub app-id), the
+    # launcher writes `blinktable.desktop` and its StartupWMClass pins the same
+    # id as RESOURCE_NAME above. Set one alone and the pairing breaks.
+    app.setDesktopFileName(os.environ.get("FLATPAK_ID") or "blinktable")
 
     from PySide6.QtGui import QIcon
     from utils.resource_loader import resource_path
