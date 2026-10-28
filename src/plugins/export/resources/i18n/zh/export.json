@@ -13,7 +13,8 @@
     "remember_by_default": "默认记住",
     "lock_aspect_ratio": "锁定宽高比",
     "select_background_color": "选择背景颜色",
-    "select_output_directory": "选择输出目录"
+    "select_output_directory": "选择输出目录",
+    "export_first_frame": "仅导出第一帧"
   },
   "tooltip": {
     "use_favorite": "使用收藏"

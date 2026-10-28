@@ -19,7 +19,7 @@ from sli_ui_toolkit.ui.widgets.text.engine.markdown import (
     TableBlock,
 )
 
-from .service import ImageProperties, ImagePropertyRow
+from .service import ImageProperties, ImagePropertyRow, apply_row_params
 
 Translate = Callable[[str, str], str]
 
@@ -63,5 +63,6 @@ def _row_cells(
 
 def _row_value(row: ImagePropertyRow, translate: Translate) -> str:
     if row.value_key:
-        return translate(row.value_key, row.fallback_value or row.value)
+        text = translate(row.value_key, row.fallback_value or row.value)
+        return apply_row_params(text, row.value_params)
     return row.value or "-"

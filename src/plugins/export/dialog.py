@@ -1,6 +1,8 @@
 # Audit-Meta: pattern=qdialog-wiring reason="one QDialog layout/signal wiring — size from scaled_px/QSS-free boilerplate"
 import io
 import logging
+from pathlib import Path
+from typing import Iterable
 
 import PIL.Image
 import shiboken6 as sip
@@ -24,12 +26,48 @@ from sli_ui_toolkit.i18n import translatable_text, translatable_tooltip
 from sli_ui_toolkit.managers import SettleGate, scaled_px
 from sli_ui_toolkit.ui.pending_settle import PendingSettle, settle_on_paint
 from sli_ui_toolkit.theme import ThemeManager
-from sli_ui_toolkit.widgets import CustomLineEdit
+from sli_ui_toolkit.widgets import CustomLineEdit, Text
 from ui.theming import polish_themed_dialog
 from core.log_names import APP_LOGGER_NAME
 from utils.resource_loader import resource_path
 
 logger = logging.getLogger(APP_LOGGER_NAME)
+
+#: Catalogue key of the export-side honesty line. Same wording as the
+#: properties-panel notice, because it is the same fact: the file the user is
+#: exporting does not contain what the viewer showed.
+FIRST_FRAME_EXPORT_KEY = "export.export_first_frame"
+
+
+def first_frame_source_suffixes(
+    source_paths: Iterable[str | Path] | None,
+) -> tuple[str, ...]:
+    """Suffixes among *source_paths* that only contributed one frame.
+
+    Group B of :mod:`shared.image_extensions` (``.gif``/``.apng``/``.mpo``/
+    ``.fli``/``.flc``/``.dcx``/``.avifs``/``.psd``) is decoded as one frame or
+    one flattened composite, so a composite exported from it is honest only if
+    the dialog says so. Pure suffix matching — no file is opened, no decoder
+    question is asked, so a missing/odd path cannot make the dialog fail.
+    """
+    try:
+        from shared.image_extensions import FIRST_FRAME_SUFFIXES
+    except Exception:
+        return ()
+    found: list[str] = []
+    for raw in source_paths or ():
+        try:
+            suffix = Path(str(raw)).suffix.lower()
+        except Exception:
+            continue
+        if suffix in FIRST_FRAME_SUFFIXES and suffix not in found:
+            found.append(suffix)
+    return tuple(found)
+
+
+def has_first_frame_source(source_paths: Iterable[str | Path] | None) -> bool:
+    """True when at least one export input is a first-frame/flattened file."""
+    return bool(first_frame_source_suffixes(source_paths))
 
 
 class ExportDialog(ThemedDialog):
@@ -42,6 +80,7 @@ class ExportDialog(ThemedDialog):
         suggested_filename: str = "",
         on_set_favorite_dir=None,
         native_size: tuple[int, int] | None = None,
+        source_paths: Iterable[str | Path] | None = None,
     ):
         super().__init__(parent)
         self.setWindowIcon(QIcon(resource_path("resources/icons/icon.png")))
@@ -52,6 +91,11 @@ class ExportDialog(ThemedDialog):
         self.dialog_state = dialog_state
         self.theme_manager = ThemeManager.get_instance()
         self.suggested_filename = suggested_filename
+        # Documents this export is built from. Only their SUFFIX is used: a
+        # group-B source (first frame / flattened composite, see
+        # ``shared.image_extensions``) hides part of itself, and the dialog
+        # owes the user that sentence before the file is written.
+        self._first_frame_suffixes = first_frame_source_suffixes(source_paths)
         self._on_set_favorite_dir = on_set_favorite_dir
         self.favorite_dir = dialog_state.favorite_dir
         self._export_options_cache: dict | None = None
@@ -224,6 +268,9 @@ class ExportDialog(ThemedDialog):
         )
         for widget, key, suffix in pairs:
             widget.setText(self._tr(key, key) + suffix)
+        notice = getattr(self, "first_frame_notice_label", None)
+        if notice is not None:
+            notice.setText(self._first_frame_notice_text())
         self.btn_lock_ratio.setToolTip(
             self._tr("export.lock_aspect_ratio", "Lock aspect ratio")
         )
@@ -333,6 +380,32 @@ class ExportDialog(ThemedDialog):
 
     def _init_ui(self):
         assemble_export_ui(self)
+        self._build_first_frame_notice()
+
+    def _build_first_frame_notice(self) -> None:
+        """One honesty line when a SOURCE document is only partly on screen.
+
+        The export writes the composite built from the frame the viewer holds,
+        so for a ``.gif``/``.apng``/``.fli``/``.dcx``/``.mpo``/``.avifs``
+        source that is the first frame and for ``.psd`` the flattened
+        composite. Hidden entirely for ordinary formats: one row, no panel, no
+        change to the rest of the form.
+        """
+        self.first_frame_notice_label = Text(
+            self._first_frame_notice_text(), mode="plain"
+        )
+        self.first_frame_notice_label.setObjectName("export-first-frame-notice")
+        self.first_frame_notice_label.setWordWrap(True)
+        self.first_frame_notice_label.setVisible(bool(self._first_frame_suffixes))
+        layout = self.export_form_frame.layout()
+        if layout is not None and layout.count():
+            # Directly above the action bar: the last thing read before OK.
+            layout.insertWidget(layout.count() - 1, self.first_frame_notice_label)
+
+    def _first_frame_notice_text(self) -> str:
+        if not self._first_frame_suffixes:
+            return ""
+        return self._tr(FIRST_FRAME_EXPORT_KEY, "Only the first frame is exported")
 
     def _populate_from_state(self):
         self.edit_dir.setText(self.dialog_state.output_dir)
