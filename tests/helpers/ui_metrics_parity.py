@@ -74,6 +74,8 @@ from tests.helpers.drain_until_stable import drain_until_stable
 #: The probe string used to pick a font face with *measurably* different
 #: metrics — a face with identical advances would prove nothing.
 _PROBE_TEXT = "File"
+#: Digit sample: label-derived widths measure numeric texts ("1", "50", "100").
+_PROBE_DIGITS = "0123456789"
 
 #: Scale lever target — far enough from 1.0 that rounded px geometry moves.
 _SCALE_TARGET = 1.25
@@ -220,34 +222,37 @@ def _font_lever() -> tuple[Callable[[], None], Callable[[], None]]:
     ui_font = UiFont.get_instance()
     current = ui_font.family()
     base_metrics = QFontMetrics(ui_font.resolve())
-    base_advance = base_metrics.horizontalAdvance(_PROBE_TEXT)
+    base_word = base_metrics.horizontalAdvance(_PROBE_TEXT)
+    base_digits = base_metrics.horizontalAdvance(_PROBE_DIGITS)
     base_height = base_metrics.height()
-    # The probes are GEOMETRY (width/height of a derived surface), so the lever
-    # has to move the metric the geometry derives from: the font HEIGHT. A family
-    # that only changes the advance left `value_slider_row` at the same (54, 19)
-    # on a CI runner and failed the parity check for a reason that is not the
-    # widget's — hence the height-first selection, and a skip when nothing moves
-    # it at all.
+
+    # WHICH metric the lever must move is decided by what the probes MEASURE, not
+    # by what is convenient to change. The label-derived widths in this harness
+    # (`ValueSliderRow._pad_width`) are the widest of the slider's formatted
+    # samples — digit texts — so a face whose WORD advance differs while its digit
+    # advances stay tabular leaves the probe at the same (54, 19). That is exactly
+    # how this test failed twice on a CI runner with a lever that had "moved the
+    # metrics". Preference: digit advance (what the pad measures), then height.
     alternate: str | None = None
-    fallback: str | None = None
+    height_only: str | None = None
+    word_only: str | None = None
     for family in sorted(QFontDatabase.families()):
         if family == current:
             continue
         metrics = QFontMetrics(ui_font.resolve(family=family))
-        if metrics.height() != base_height:
+        if metrics.horizontalAdvance(_PROBE_DIGITS) != base_digits:
             alternate = family
             break
-        if fallback is None and metrics.horizontalAdvance(_PROBE_TEXT) != base_advance:
-            fallback = family
-    del fallback  # advance-only faces are NOT a usable lever: see below
+        if height_only is None and metrics.height() != base_height:
+            height_only = family
+        if word_only is None and metrics.horizontalAdvance(_PROBE_TEXT) != base_word:
+            word_only = family
+    alternate = alternate or height_only or word_only
     if alternate is None:
-        # Measured on a CI runner: families that change only the ADVANCE left
-        # `value_slider_row` at the same (54, 19) — these probes' geometry follows
-        # the font HEIGHT, so an advance-only face cannot exercise the contract
-        # and using it turned an unmeasurable environment into a red test.
         pytest.skip(
-            "no alternate font family changes the font HEIGHT on this system; "
-            "the height-derived geometry these probes measure cannot move here"
+            "no alternate font family changes the advance of digits, the height "
+            "or the advance of a word on this system; the font axis cannot be "
+            "exercised here"
         )
 
     # Capture the original override BEFORE the first apply can change it.
