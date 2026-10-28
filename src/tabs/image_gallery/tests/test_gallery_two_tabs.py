@@ -462,7 +462,9 @@ def test_exif_cache_serves_repeat_select_mode(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
         _mode, "_has_exif", lambda p: (calls.__setitem__("n", calls["n"] + 1), real(p))[1]
     )
-    assert _mode.exif_for(tmp_path / "e1.png") is False
-    assert _mode.exif_for(tmp_path / "e1.png") is False
+    # ``None``, not ``False``: e1 has no image data, so NO backend parsed it and
+    # "no EXIF" is not a measurement (board task-triage-unmeasured-guard).
+    assert _mode.exif_for(tmp_path / "e1.png") is None
+    assert _mode.exif_for(tmp_path / "e1.png") is None
     assert _mode.exif_for(tmp_path / "e2.png") is False
     assert calls["n"] == 2  # once per file, repeats from cache
