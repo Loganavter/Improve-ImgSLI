@@ -124,7 +124,12 @@ def _build_image_properties_dialog():
 
 
 # ---------------------------------------------------------------------------
-# Settings — floor (300, 200), bounds (800, 1200) at factor 1.0.
+# Settings — design floor (300, 200), bounds (800, 1200) at factor 1.0.
+#
+# The *applied* floor is content-driven now (``settings_minimum_floor(dialog)``
+# brackets the widest page's content + shell chrome, owner report 2026-10-28),
+# so it is asserted as "never below the design floor" here; the design-floor
+# scale contract lives on the policy-only call (no dialog, no chrome to add).
 # ---------------------------------------------------------------------------
 
 
@@ -136,7 +141,7 @@ def test_settings_dialog_geometry_brackets_its_scaled_content(qapp):
         policy = settings_geometry_policy()
         assert policy.minimum_floor == (300, 200)
         assert policy.width_bounds == (800, 1200)
-        assert baseline.minimumWidth() == 300
+        assert baseline.minimumWidth() >= 300
         assert baseline.minimumHeight() == 200
     finally:
         baseline.deleteLater()
@@ -155,7 +160,7 @@ def test_settings_dialog_geometry_brackets_its_scaled_content(qapp):
             f"{policy.width_bounds}, expected "
             f"{(scaled_px(800), scaled_px(1200))}"
         )
-        assert scaled.minimumWidth() == scaled_px(300)
+        assert scaled.minimumWidth() >= scaled_px(300)
         assert scaled.minimumHeight() == scaled_px(200)
     finally:
         scaled.deleteLater()

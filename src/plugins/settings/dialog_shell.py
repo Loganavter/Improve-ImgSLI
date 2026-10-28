@@ -5,6 +5,8 @@ from PySide6.QtWidgets import QScrollArea, QSizePolicy
 
 from plugins.settings.layout_geometry import apply_settings_dialog_geometry
 from shared_toolkit.ui.layout_sizing import defer_dialog_geometry
+from sli_ui_toolkit.ui.managers import connect_ui_metrics
+from sli_ui_toolkit.ui.managers.ui_metrics import AXIS_SCALE
 from sli_ui_toolkit.widgets import (
     DEFER_CLICK_AWAIT_RIPPLE,
     CustomLineEdit,
@@ -48,6 +50,7 @@ def setup_dialog_shell(dialog):
     dialog.content_area.setObjectName("SettingsContentArea")
     dialog.content_layout = dialog.shell.content_layout
     dialog.pages_stack = dialog.shell.pages_stack
+    _install_content_padding_metrics(dialog)
 
     dialog.action_bar = DialogActionBar(
         dialog._tr("common.ok", dialog.current_language),
@@ -114,3 +117,34 @@ def defer_geometry(dialog):
 
 def calculate_and_apply_geometry(dialog):
     apply_settings_dialog_geometry(dialog)
+
+def _apply_content_padding(dialog):
+    """Re-resolve the right column's insets at the live ``UiScale`` factor.
+
+    ``SidebarDialogShell`` resolves ``content_margins`` once, at construction,
+    and never again. A live interface-scale change therefore left the column's
+    padding at design px while every row inside it scaled: the gap that
+    separates the splitter divider from the first control group shrank and the
+    divider line ended up against the groups' leftmost stroke (owner report,
+    2026-10-28, at dpr 1.25). Keeping the app-side gap proportional is the app
+    half of that report; the divider's own geometry (splitter handle width,
+    DPR-snapped line) is the toolkit shell's, not this file's.
+    """
+    pad = control_edge_padding()
+    layout = getattr(dialog, "content_layout", None)
+    if layout is not None:
+        layout.setContentsMargins(pad, pad, pad, pad)
+
+def _install_content_padding_metrics(dialog):
+    """Refresh the content padding (and the content-driven minimum) on scale."""
+
+    def _on_scale_changed(*_args):
+        _apply_content_padding(dialog)
+        # The minimum width brackets the page content at the live factor
+        # (layout_geometry.settings_minimum_floor), so it has to be recomputed
+        # here too — otherwise a scale change leaves the window at the old
+        # (design-px) floor and the right column clips again.
+        if getattr(dialog, "_calculate_and_apply_geometry", None) is not None:
+            defer_geometry(dialog)
+
+    connect_ui_metrics(dialog, _on_scale_changed, axes=frozenset({AXIS_SCALE}))

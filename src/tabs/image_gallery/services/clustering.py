@@ -269,9 +269,9 @@ def cluster_items(items: list["GalleryItem"], threshold: int = 10) -> list["Seri
     ``phash`` / ``embedding_dist_to_centroid`` metrics for convenience
     (explicit but non-Qt). Rank is intentionally NOT assigned here — it comes
     from the measured metric fusion (``services.rank_fusion``) in the
-    controller. Corrupt/unreadable files (both
-    phash == 0 and embedding is zero vector) are excluded from grouping
-    so they become singletons (UNGROUPED).
+    controller. Files no backend could DECODE are excluded from grouping so they
+    become singletons (UNGROUPED); that is the decode's answer, not an inference
+    from a zero hash (an all-black image is readable and hashes to 0).
     """
     from tabs.image_gallery.models import Series  # local import, explicit dep
 
@@ -293,14 +293,14 @@ def cluster_items(items: list["GalleryItem"], threshold: int = 10) -> list["Seri
         # but embedding zero for uniform gray is not all zeros — uniform gray HSV still has V=~0.5).
         # So treat fully-zero embedding as invalid/currupt. Hash zero alone is ambiguous
         # (all white image gives hash 0). Use embedding check.
-        is_zero_embed = e == zero_vec
-        # If both hash==0 and embed zero, treat as corrupt/unreadable → invalid.
-        if h == 0 and is_zero_embed:
-            # Check if file actually exists and PIL could open it: if size==0 file, invalid.
-            # For uniform white image, embedding is not zero (V ~1), so not invalid.
-            valid.append(False)
-        else:
-            valid.append(True)
+        # Readable-ness is the DECODE's answer, never a property of the signature.
+        # The old rule inferred "corrupt" from ``h == 0 and e == zero_vec``, and an
+        # ALL-BLACK image satisfies both (a uniform picture hashes to 0 and its HSV
+        # value channel is 0 everywhere) — so a perfectly readable frame was dropped
+        # from its own series as if no backend could read it (measured 2026-10-28).
+        # ``decode_image`` is the marker ``decode_cache`` already returns None from,
+        # and it is a cache HIT here: ``signature_for`` just decoded the same file.
+        valid.append(decode_cache.decode_image(it.path) is not None)
 
     dsu = _DSU(n)
     # Tight embedding threshold derived from hamming threshold.

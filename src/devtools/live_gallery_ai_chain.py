@@ -312,6 +312,36 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(1.5)
         verdict["local_pass_settled"] = settled_local
 
+        # Decode counters (W7 item 3): the tracer spans `decode.proxy` /
+        # `decode.store` / `decode.coarse`, so a live cold/warm count needs no
+        # instrumented build — and the WARM half is what a cache claim is about.
+        def _decode_counts() -> dict:
+            rows = control.call("query_trace", filter="decode.", n=2000).get("records") or []
+            counts: dict[str, dict[str, int]] = {}
+            for row in rows:
+                kind = str(row.get("kind") or "")
+                if not kind.startswith("decode."):
+                    continue
+                payload = row.get("payload") or {}
+                counts.setdefault(kind, {})
+                path = str(payload.get("path") or "?")
+                counts[kind][path] = counts[kind].get(path, 0) + 1
+            return counts
+
+        cold = _decode_counts()
+        verdict["decode_cold"] = cold
+        try:
+            control.call("open_folder", path=str(folder), tab="image_gallery")
+            time.sleep(3.0)
+            warm = _decode_counts()
+            verdict["decode_warm"] = warm
+            verdict["decode_warm_added"] = {
+                kind: sum(warm.get(kind, {}).values()) - sum(cold.get(kind, {}).values())
+                for kind in set(cold) | set(warm)
+            }
+        except Exception as exc:  # noqa: BLE001 - a warm probe failure is not the chain's
+            verdict["decode_warm"] = f"unavailable: {type(exc).__name__}: {exc}"
+
         try:
             trace = control.call("query_trace", filter=JUDGE_ONLY_AXIS, n=40)
             verdict["trace_hits"] = [
@@ -414,6 +444,16 @@ def main(argv: list[str] | None = None) -> int:
         "no_local_only_axis_in_the_ai_entry": bool(ai_entries) and not any(
             axis in row["axes"] for row in ai_entries for axis in LOCAL_ONLY_AXES
         ),
+        "decode_spans_recorded": bool(verdict.get("decode_cold")),
+        "every_item_proxied_at_least_once": bool(verdict.get("decode_cold", {}).get("decode.proxy"))
+        and all(count >= 1 for count in verdict["decode_cold"]["decode.proxy"].values()),
+        # NOT a gate: measured 2026-10-28, a folder REOPEN re-decodes every item
+        # (4 cold -> +4 warm). The proxy cache does not survive a pool reset, which
+        # is a design fact worth reporting, not a defect — the "warm reopen = 0"
+        # invariant the isolation fixtures assert is about re-reading the SAME
+        # file (Quick Look), not about reopening the folder. The number is in the
+        # verdict so nobody quotes "warm = 0" about a folder reopen.
+        "warm_reopen_was_measured": isinstance(verdict.get("decode_warm_added"), dict),
         "rank_reached_the_ranker": any(
             marker in line
             for line in verdict["log_lines"]["rank"]

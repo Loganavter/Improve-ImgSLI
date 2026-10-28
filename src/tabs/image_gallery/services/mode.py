@@ -104,17 +104,23 @@ def _stat_key(path) -> tuple[str, int, int] | None:
         return None
 
 
-def exif_for(path) -> bool:
-    """Cached EXIF-presence probe for *path* (content-keyed)."""
+def exif_for(path) -> bool | None:
+    """Cached EXIF-presence probe for *path* (content-keyed).
+
+    Three states, because the marker has three: ``True`` (parsed, has EXIF),
+    ``False`` (parsed, no EXIF) and ``None`` (NO backend parsed this file — the
+    ``decode_cache.exif_present`` marker). Folding ``None`` into ``False`` claimed
+    "measured: no EXIF" for a file nobody measured.
+    """
     key = _stat_key(path)
     if key is None:
-        return bool(_has_exif(path))
+        return _has_exif(path)
     try:
         if key in _EXIF_CACHE:
-            return bool(_EXIF_CACHE[key])
+            return _EXIF_CACHE[key]
     except Exception:
         pass
-    value = bool(_has_exif(path))
+    value = _has_exif(path)
     try:
         if len(_EXIF_CACHE) >= _SHARPNESS_CACHE_LIMIT:
             for old in list(_EXIF_CACHE)[: _SHARPNESS_CACHE_LIMIT // 4]:
@@ -208,7 +214,7 @@ def _sharpness(path: Path) -> float | None:
         return None
 
 
-def _has_exif(path: Path) -> bool:
+def _has_exif(path: Path) -> bool | None:
     """EXIF-presence probe over the shared triage frame (one open per file).
 
     The bit is captured from the RAW frame before the cache's orientation
@@ -218,8 +224,8 @@ def _has_exif(path: Path) -> bool:
     try:
         present = decode_cache.exif_present(path)
     except Exception:
-        return False
-    return bool(present)
+        return None
+    return None if present is None else bool(present)
 
 
 def _average_sharpness(items: list["GalleryItem"]) -> float | None:
@@ -293,7 +299,9 @@ def select_mode(
     # (e.g., burst). Use sharpness + EXIF to distinguish.
     if items:
         # If any image has EXIF and sharpness is moderate-high → camera.
-        has_exif_any = any(exif_for(it.path) for it in items)
+        # ``is True``: an unmeasured file (``None``) never proves the folder came
+        # from a camera. A measured ``False`` does not either.
+        has_exif_any = any(exif_for(it.path) is True for it in items)
         avg_s = _average_sharpness(items)
         if avg_s is not None and avg_s > _SHARPNESS_THRESHOLD:
             return _Mode.CAMERA

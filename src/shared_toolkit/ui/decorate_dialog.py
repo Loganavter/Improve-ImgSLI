@@ -11,7 +11,13 @@ otherwise error/warning popups would slip through with the OS native frame.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QFileDialog,
+    QMessageBox,
+    QWidget,
+)
 
 from sli_ui_toolkit import CustomTitleBar, decorate_dialog as _toolkit_decorate_dialog
 from sli_ui_toolkit.theme import ThemeManager
@@ -182,12 +188,49 @@ def _resolve_dialog_title(dialog: QDialog) -> str:
     return ""
 
 
+#: Standard *host* dialogues that keep the native close-only chrome: a file
+#: chooser may be a platform-native window whose own frame owns the controls,
+#: and a message box is a modal notification, not a workspace. Handing them a
+#: CSD minimize/maximize pair would either duplicate the OS buttons or invite
+#: the user to maximize an error popup.
+_CLOSE_ONLY_DIALOG_TYPES = (QFileDialog, QMessageBox)
+
+
+def _wants_window_controls(dialog: QDialog) -> bool:
+    """Default answer to "does this dialog get minimize **and** maximize?".
+
+    The app-wide rule: every app-owned window carries the same three
+    functional controls (minimize / maximize-restore / close). The exceptions
+    are deliberate, not accidental, and are the two checks below:
+
+    * ``_csd_opt_out`` — the dialog manages its own chrome and presents
+      itself as a *compact prompt* (``AppMessageDialog`` /
+      ``AppTextInputDialog`` set it before calling :func:`decorate_dialog`
+      themselves); those keep the close button only, matching the
+      ``WindowCloseButtonHint``-only window flags they declare.
+    * :data:`_CLOSE_ONLY_DIALOG_TYPES` — Qt's own ``QFileDialog`` /
+      ``QMessageBox``.
+
+    Callers can still force either way per call site by passing
+    ``show_minimize=`` / ``show_maximize=`` explicitly — the predicate only
+    fills the default. Covered by
+    ``tests/plugins/test_dialog_window_controls.py``.
+    """
+    if bool(getattr(dialog, "_csd_opt_out", False)):
+        return False
+    if isinstance(dialog, _CLOSE_ONLY_DIALOG_TYPES):
+        return False
+    return True
+
+
 def decorate_dialog(
     dialog: QDialog,
     *,
     title: str = "",
-    show_minimize: bool = False,
-    show_maximize: bool = False,
+    # None -> ask _wants_window_controls (app dialogs: all three controls;
+    # compact prompts / Qt standard dialogs: close only).
+    show_minimize: bool | None = None,
+    show_maximize: bool | None = None,
     show_close: bool = True,
     resizable: bool = True,
     # Closing a dialog can do real work (session save, plugin teardown) —
@@ -202,6 +245,13 @@ def decorate_dialog(
     # stack a second CustomTitleBar.HEIGHT onto the layout top margin.
     if bool(getattr(dialog, "_csd_decorating", False)):
         return None
+
+    if show_minimize is None or show_maximize is None:
+        wants_controls = _wants_window_controls(dialog)
+        if show_minimize is None:
+            show_minimize = wants_controls
+        if show_maximize is None:
+            show_maximize = wants_controls
 
     from ui.icon_manager import AppIcon
 
@@ -332,7 +382,13 @@ class _DialogDecorationInterceptor(QObject):
     is applied while the QWindow is still hidden, so there is no visible
     flicker. Dialogs that already carry ``_csd_title_bar`` (i.e. explicitly
     decorated by their authors) are skipped. Set ``_csd_opt_out = True`` on a
-    dialog instance to bypass this filter entirely.
+    dialog instance to bypass this filter entirely (the compact prompts do
+    that and decorate themselves).
+
+    The control set is not a second decision point: the call passes no
+    ``show_minimize`` / ``show_maximize``, so :func:`_wants_window_controls`
+    decides — app dialogs made here get all three controls, while Qt's
+    ``QFileDialog`` / ``QMessageBox`` stay close-only.
     """
 
     def eventFilter(self, watched, event):

@@ -319,7 +319,11 @@ def test_sharpness_and_exif_parity_with_pre_change_math(tmp_path) -> None:
 
 
 def test_failure_paths_still_degrade(tmp_path) -> None:
-    """Unreadable files keep today's 0 / zero-vector / None / False contract."""
+    """Unreadable files degrade to the UNMEASURED contract, never to a measured zero.
+
+    ``exif_for`` answers ``None`` for a file no backend parsed: ``False`` would
+    claim "measured: no EXIF" (board task-triage-unmeasured-guard, 2026-10-28).
+    """
     from tabs.image_gallery.services import clustering, decode_cache, mode
 
     p = tmp_path / "broken.png"
@@ -331,7 +335,7 @@ def test_failure_paths_still_degrade(tmp_path) -> None:
 
     assert clustering.signature_for(p) == (0, [0.0] * 192)
     assert mode.sharpness_for(p) is None
-    assert mode.exif_for(p) is False
+    assert mode.exif_for(p) is None
 
 
 if __name__ == "__main__":  # pragma: no cover
