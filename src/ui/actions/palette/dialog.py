@@ -8,7 +8,7 @@ import logging
 
 from PySide6.QtCore import QEvent, QTimer, Qt
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QSizePolicy, QVBoxLayout, QWidget
 
 from core.actions.types import ActionDescriptor
 from shared_toolkit.ui.themed_dialog import ThemedDialog
@@ -36,6 +36,12 @@ _DIALOG_HEIGHT = 420# Filter on the keystroke, like GIMP's action search
 # so a timer only added the feeling of a sticky search box. 0 = coalesce the
 # burst that arrives inside one event-loop turn, do not delay a keystroke.
 _RELOAD_DEBOUNCE_MS = 0
+
+#: Row height in design px (must match ``row._ROW_HEIGHT``); the layout gap is
+#: read through ``scaled_px`` at use time so it follows a UI-scale change.
+_ROW_HEIGHT = 48
+#: Extra rows materialized above/below the viewport (scroll stays smooth).
+_VIRTUAL_OVERSCAN = 3
 
 
 def _is_valid(obj) -> bool:
@@ -156,6 +162,12 @@ class FindActionDialog(ThemedDialog):
         # instead of destroying and rebuilding a composite widget per action
         # (measured: 300 actions = 0.9-2.6 s per keystroke before reuse).
         self._rows_by_id: dict[str, ActionPaletteRow] = {}
+        # Materialized window state. Rows are widgets with painter layers
+        # (~2.7 ms each), so only the visible slice exists: the spacers carry
+        # the rest of the list's scroll extent.
+        self._window_start = 0
+        self._materializing = False
+        self._pitch_cache = 0
         self._current_index = -1
         self._reload_timer = QTimer(self)
         self._reload_timer.setSingleShot(True)
@@ -361,6 +373,14 @@ class FindActionDialog(ThemedDialog):
         self._list_layout.setContentsMargins(0, 0, 0, 0)
         self._list_layout.setSpacing(scaled_px(2))
         self._list_layout.addStretch(1)
+        self._top_spacer = QWidget(self._list_host)
+        self._bottom_spacer = QWidget(self._list_host)
+        for spacer in (self._top_spacer, self._bottom_spacer):
+            spacer.setFixedHeight(0)
+            spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._list_layout.insertWidget(0, self._top_spacer)
+        self._list_layout.insertWidget(1, self._bottom_spacer)
+        self._scroll.verticalScrollBar().valueChanged.connect(self._on_scroll)
         self._scroll.setWidget(self._list_host)
         root.addWidget(self._scroll, 1)
         # The overlay scrollbar reserves its gutter asynchronously after show:
@@ -400,34 +420,8 @@ class FindActionDialog(ThemedDialog):
             query=query,
             topic=self._topic,
         )
-        # Rows are query-independent (the breadcrumb ignores ``query`` by
-        # design - see ``registry.action_breadcrumb_text``), so a keystroke only
-        # changes which rows are shown and in what order: reuse the widgets and
-        # touch the layout, never rebuild one.
-        keyboard_overrides = _current_keyboard_overrides()
-        wanted: list[ActionPaletteRow] = []
-        for action in self._actions:
-            row = self._rows_by_id.get(action.action_id)
-            if row is None:
-                row = ActionPaletteRow(
-                    action,
-                    query=query,
-                    active_tab=active_tab,
-                    keyboard_overrides=keyboard_overrides,
-                    parent=self._list_host,
-                )
-                row.rowActivated.connect(self._run_action_id)
-                row.rowRevealRequested.connect(self._reveal_action_id)
-                row.learnMoreRequested.connect(self._learn_more_action_id)
-                self._rows_by_id[action.action_id] = row
-            wanted.append(row)
-        shown = set(id(row) for row in wanted)
-        for row in self._rows_by_id.values():
-            row.setVisible(id(row) in shown)
-        if [id(row) for row in self._rows] != [id(row) for row in wanted]:
-            for index, row in enumerate(wanted):
-                self._list_layout.insertWidget(index, row)
-        self._rows = wanted
+        self._active_tab = active_tab
+        self._current_index = -1
         # Prune only rows whose action left the catalog (tab closed, plugin
         # unloaded) - an empty *filter* must not destroy the row cache, or the
         # next backspace rebuilds every one of them (measured 80 ms for 300).
@@ -436,16 +430,18 @@ class FindActionDialog(ThemedDialog):
             for action in registry.list_for(active_tab=active_tab, topic=self._topic)
         }
         for action_id in [k for k in self._rows_by_id if k not in catalog_ids]:
-            row = self._rows_by_id.pop(action_id)
-            self._list_layout.removeWidget(row)
-            row.deleteLater()
+            self._list_layout.removeWidget(self._rows_by_id.pop(action_id))
 
-        has_rows = bool(self._rows)
+        has_rows = bool(self._actions)
         self._scroll.setVisible(has_rows)
         self._empty.setVisible(not has_rows)
-        # Default-select the first row for the left accent tick + Enter target.
-        # Hover wash is mouse-only (see RowBackgroundLayer) so this is not a
-        # permanent "hovered" look.
+        # A query change always shows its best match first: materialize from the
+        # top and put the scroll back there (GIMP's search popup selects row 0
+        # after every rebuild).
+        self._window_start = 0
+        self._scroll_to_top()
+        self._materialize(0)
+
         index = 0
         if has_rows and self._preselect_action_id:
             for i, action in enumerate(self._actions):
@@ -456,8 +452,101 @@ class FindActionDialog(ThemedDialog):
         if has_rows and index == 0:
             self._scroll_to_top()
 
+    # -- virtual list: only the visible slice is materialized ----------------
+
+    def _row_pitch(self) -> int:
+        """Row height + layout spacing, measured once from a live row."""
+        if self._pitch_cache <= 0:
+            measured = 0
+            for row in self._rows_by_id.values():
+                if _is_valid(row):
+                    measured = row.sizeHint().height()
+                    if measured > 0:
+                        break
+            self._pitch_cache = max(
+                scaled_px(_ROW_HEIGHT) + scaled_px(2), measured + scaled_px(2)
+            )
+        return self._pitch_cache
+
+    def _visible_capacity(self) -> int:
+        pitch = max(1, self._row_pitch())
+        viewport = self._scroll.viewport().height()
+        rows = max(1, (viewport + pitch - 1) // pitch)
+        return rows + 2 * _VIRTUAL_OVERSCAN
+
+    def _materialize(self, start: int) -> None:
+        """Materialize the window of rows around *start*; park the rest."""
+        if self._materializing:
+            return
+        self._materializing = True
+        try:
+            self._materialize_inner(start)
+        finally:
+            self._materializing = False
+
+    def _materialize_inner(self, start: int) -> None:
+        pitch = self._row_pitch()
+        total = len(self._actions)
+        if total == 0:
+            for row in self._rows:
+                row.setVisible(False)
+            self._rows = []
+            self._top_spacer.setFixedHeight(0)
+            self._bottom_spacer.setFixedHeight(0)
+            self._window_start = 0
+            return
+        capacity = min(total, self._visible_capacity())
+        start = max(0, min(int(start), total - capacity))
+        window = self._actions[start : start + capacity]
+        self._window_start = start
+
+        keyboard_overrides = _current_keyboard_overrides()
+        materialized: list[ActionPaletteRow] = []
+        for index, action in enumerate(window):
+            row = self._rows_by_id.get(action.action_id)
+            if row is None or not _is_valid(row):
+                row = ActionPaletteRow(
+                    action,
+                    query=self._search.text(),
+                    active_tab=self._active_tab,
+                    keyboard_overrides=keyboard_overrides,
+                    parent=self._list_host,
+                )
+                row.rowActivated.connect(self._run_action_id)
+                row.rowRevealRequested.connect(self._reveal_action_id)
+                row.learnMoreRequested.connect(self._learn_more_action_id)
+                self._rows_by_id[action.action_id] = row
+            materialized.append(row)
+            # Order: [top spacer][rows...][bottom spacer][stretch]
+            self._list_layout.insertWidget(index + 2, row)
+            row.setVisible(True)
+
+        window_ids = set(id(row) for row in materialized)
+        for row in self._rows_by_id.values():
+            if id(row) not in window_ids and _is_valid(row):
+                row.setVisible(False)
+        self._rows = materialized
+        self._top_spacer.setFixedHeight(start * pitch)
+        self._bottom_spacer.setFixedHeight((total - start - capacity) * pitch)
+        # Keep the cache bounded on very large catalogs: rows outside the window
+        # are parked, and only their excess is dropped.
+        if len(self._rows_by_id) > max(8, 6 * capacity):
+            for action_id in [
+                a.action_id for a in self._actions if a.action_id not in
+                {act.action_id for act in window}
+            ][: len(self._rows_by_id) - 6 * capacity]:
+                row = self._rows_by_id.pop(action_id, None)
+                if row is not None:
+                    self._list_layout.removeWidget(row)
+
+    def _on_scroll(self, value: int) -> None:
+        if self._materializing or not self._actions:
+            return
+        pitch = max(1, self._row_pitch())
+        self._materialize(int(value) // pitch)
+
     def _set_current_index(self, index: int) -> None:
-        if not self._rows:
+        if not self._actions:
             self._current_index = -1
             return
         if index < 0:
@@ -465,11 +554,31 @@ class FindActionDialog(ThemedDialog):
             for row in self._rows:
                 row.set_current(False)
             return
-        index = max(0, min(index, len(self._rows) - 1))
+        index = max(0, min(index, len(self._actions) - 1))
         self._current_index = index
+        if not self._row_is_materialized(index):
+            self._materialize(index)
+            self._scroll_to_index(index)
+        current_id = self._actions[index].action_id
+        for row in self._rows:
+            row.set_current(getattr(row, "action_id", None) == current_id)
+        return
         for i, row in enumerate(self._rows):
             row.set_current(i == index)
-        self._scroll_to_current()
+        self._scroll_to_index(self._current_index)
+
+    def _row_is_materialized(self, index: int) -> bool:
+        if not (0 <= index < len(self._actions)) or not self._rows:
+            return False
+        action_id = self._actions[index].action_id
+        return any(getattr(row, "action_id", None) == action_id for row in self._rows)
+
+    def _scroll_to_index(self, index: int) -> None:
+        if not _is_valid(self._scroll):
+            return
+        pitch = max(1, self._row_pitch())
+        bar = self._scroll.verticalScrollBar()
+        bar.setValue(max(bar.minimum(), min(index * pitch, bar.maximum())))
 
     def _scroll_to_top(self) -> None:
         """Put the results back at the top after a query change.
