@@ -50,7 +50,7 @@ def test_desktop_files_match_sources_byte_for_byte(monkeypatch, tmp_path):
 
     assert launcher.desktop_integration(_quiet_ui(), mode="verbose")
 
-    target = home / ".local" / "share" / "applications" / "improve-imgsli.desktop"
+    target = home / ".local" / "share" / "applications" / "blinktable.desktop"
     assert target.is_file()
     template = launcher.DESKTOP_TEMPLATE.read_text(encoding="utf-8")
     expected = (
@@ -94,7 +94,7 @@ def test_desktop_uninstall_removes_files(monkeypatch, tmp_path):
     _bless_tool(monkeypatch)
 
     assert launcher.desktop_integration(_quiet_ui())
-    target = home / ".local" / "share" / "applications" / "improve-imgsli.desktop"
+    target = home / ".local" / "share" / "applications" / "blinktable.desktop"
     assert target.is_file()
 
     assert launcher.desktop_uninstall(_quiet_ui())
@@ -118,7 +118,7 @@ def test_template_substitution_escapes_nothing(monkeypatch, tmp_path):
     home = _fake_home(monkeypatch, tmp_path)
     _bless_tool(monkeypatch)
     launcher.desktop_integration(_quiet_ui())
-    target = home / ".local" / "share" / "applications" / "improve-imgsli.desktop"
+    target = home / ".local" / "share" / "applications" / "blinktable.desktop"
     text = target.read_text(encoding="utf-8")
     assert "@LAUNCHER_PATH@" not in text
     assert "@ICON_PATH@" not in text

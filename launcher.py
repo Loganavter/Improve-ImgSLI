@@ -44,7 +44,7 @@ VENV_DIR = SCRIPT_DIR / "venv"
 REQUIREMENTS = SCRIPT_DIR / "requirements-gui.txt"
 DEV_REQUIREMENTS = SCRIPT_DIR / "requirements-dev.txt"
 CONTEXT_SCRIPT = SCRIPT_DIR / "src" / "devtools" / "context_cloc.py"
-DESKTOP_TEMPLATE = SCRIPT_DIR / "improve-imgsli.desktop.in"
+DESKTOP_TEMPLATE = SCRIPT_DIR / "blinktable.desktop.in"
 APP_ICON = SCRIPT_DIR / "src" / "resources" / "icons" / "icon.png"
 DESKTOP_MIME_DIR = SCRIPT_DIR / "build" / "linux" / "mime"
 DESKTOP_THUMB_BIN = SCRIPT_DIR / "build" / "linux" / "bin" / "improve-imgsli-thumbnailer"
@@ -540,7 +540,14 @@ def desktop_integration(ui: UI, mode: str = "quiet") -> bool:
         return True
 
     home = Path.home()
-    target = home / ".local" / "share" / "applications" / "improve-imgsli.desktop"
+    # The desktop-entry ID follows the product name since 2026-10-28: it pairs
+    # with StartupWMClass / RESOURCE_NAME / setDesktopFileName in src/__main__.py.
+    target = home / ".local" / "share" / "applications" / "blinktable.desktop"
+    # Pre-rename installs left the OLD id behind; two entries for one app is the
+    # bug this migration exists for (idempotent: removed on the next install).
+    legacy_target = (
+        home / ".local" / "share" / "applications" / "improve-imgsli.desktop"
+    )
     mime_pkg_dir = home / ".local" / "share" / "mime" / "packages"
     thumb_bin_dst = home / ".local" / "bin" / "improve-imgsli-thumbnailer"
     thumb_desktop_dst = home / ".local" / "share" / "thumbnailers" / "improve-imgsli.thumbnailer"
@@ -565,6 +572,16 @@ def desktop_integration(ui: UI, mode: str = "quiet") -> bool:
     if _write_if_changed(target, content):
         target.chmod(0o755)
         desktop_changed = 1
+    if legacy_target.is_file():
+        try:
+            legacy_target.unlink()
+            desktop_changed = 1
+            _run_tool(
+                "update-desktop-database",
+                [str(home / ".local" / "share" / "applications")],
+            )
+        except Exception:
+            pass
 
     for mime_name in PROJECT_MIME_FILES:
         mime_src = DESKTOP_MIME_DIR / mime_name
@@ -613,9 +630,9 @@ def desktop_integration(ui: UI, mode: str = "quiet") -> bool:
 
     if mime_changed or icons_changed:
         _run_tool("update-mime-database", [str(home / ".local" / "share" / "mime")])
-        _run_tool("xdg-mime", ["default", "improve-imgsli.desktop", PROJECT_MIME_TYPE])
+        _run_tool("xdg-mime", ["default", "blinktable.desktop", PROJECT_MIME_TYPE])
         _run_tool(
-            "xdg-mime", ["default", "improve-imgsli.desktop", LEGACY_PROJECT_MIME_TYPE]
+            "xdg-mime", ["default", "blinktable.desktop", LEGACY_PROJECT_MIME_TYPE]
         )
         if icons_changed:
             _run_tool(
@@ -633,9 +650,9 @@ def desktop_integration(ui: UI, mode: str = "quiet") -> bool:
             ui.info("If Dolphin still shows Zip/old icon: killall dolphin; clear ~/.cache/thumbnails.")
     elif mode == "verbose":
         ui.info(f"MIME type / icons already up to date ({PROJECT_MIME_TYPE}).")
-        _run_tool("xdg-mime", ["default", "improve-imgsli.desktop", PROJECT_MIME_TYPE])
+        _run_tool("xdg-mime", ["default", "blinktable.desktop", PROJECT_MIME_TYPE])
         _run_tool(
-            "xdg-mime", ["default", "improve-imgsli.desktop", LEGACY_PROJECT_MIME_TYPE]
+            "xdg-mime", ["default", "blinktable.desktop", LEGACY_PROJECT_MIME_TYPE]
         )
 
     if thumb_changed:
@@ -654,7 +671,15 @@ def desktop_uninstall(ui: UI) -> bool:
         return True
 
     home = Path.home()
-    target = home / ".local" / "share" / "applications" / "improve-imgsli.desktop"
+    target = home / ".local" / "share" / "applications" / "blinktable.desktop"
+    legacy_target = (
+        home / ".local" / "share" / "applications" / "improve-imgsli.desktop"
+    )
+    if legacy_target.is_file():
+        try:
+            legacy_target.unlink()
+        except Exception:
+            pass
     mime_xml_dir = home / ".local" / "share" / "mime" / "packages"
     thumb_bin = home / ".local" / "bin" / "improve-imgsli-thumbnailer"
     thumb_desktop = home / ".local" / "share" / "thumbnailers" / "improve-imgsli.thumbnailer"
