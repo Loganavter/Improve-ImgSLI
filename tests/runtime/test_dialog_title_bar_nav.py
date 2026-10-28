@@ -195,16 +195,23 @@ def _assert_title_bar_navigation(
 @pytest.mark.xfail(
     strict=False,
     reason=(
-        "KNOWN DEFECT, quarantined 2026-10-28 (precedent #788). On a CI runner "
-        "Up from the help dialog's first row resolves to the CONTENT section "
-        "instead of the title bar: measured chain 'Button -> HelpHubPage -> "
-        "QWidget -> QWidget -> SurfaceScrollArea', in_bar=False, with the window "
-        "ACTIVE and dialog=(896,636) — the same size where the local run walks "
-        "'Button -> WindowControlsCluster -> CustomTitleBar'. So the page's "
-        "section geometrically wins the 'above' resolution on that layout: an "
-        "up-navigation defect in the product, not a test artefact. The assertion "
-        "prints chain/in_bar/bar_visible/active_window/sections, so an XPASS or a "
-        "different chain stays readable."
+        "KNOWN DEFECT, quarantined 2026-10-28 (precedent #788); kept until a "
+        "runner run confirms the fix. On a CI runner Up from the help dialog's "
+        "first row resolved to the CONTENT section instead of the title bar: "
+        "measured chain 'Button -> HelpHubPage -> QWidget -> QWidget -> "
+        "SurfaceScrollArea', in_bar=False, with the window ACTIVE and "
+        "dialog=(896,636) — the same size where the local run walks 'Button -> "
+        "WindowControlsCluster -> CustomTitleBar'. Cause (measured 2026-10-28, "
+        "not geometry): the dialog's deferred focus grants fire late enough to "
+        "land between two key presses and took focus out of the title bar — "
+        "_focus_help_container moved it to HelpBackBar, then the render-time "
+        "_restore_focus_after_window_change moved it on to the hub's first card. "
+        "Both now refuse to move focus that is already in the CSD title bar "
+        "(the bar has its own section); "
+        "tests/runtime/test_help_title_bar_focus_restore.py pins that rule "
+        "without a window layout. The assertion prints "
+        "chain/in_bar/bar_visible/active_window/sections, so a different chain "
+        "stays readable."
     ),
 )
 def test_help_dialog_title_bar_is_navigable(qapp, qtbot):
