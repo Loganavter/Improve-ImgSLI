@@ -122,22 +122,31 @@ def _stub_router(delay_s: float = 0.0):
 
 
 def make_images(folder: Path, count: int) -> list[Path]:
-    """A small series that differs visibly (the profile prompt needs a spread)."""
-    from PIL import Image, ImageDraw, ImageFilter
+    """A SERIES: one scene, small differences — dHash must keep them together.
+
+    The gallery groups a series by perceptual hash (hamming <= 10) and the Jev
+    rank needs a series of >= 2, so four unrelated pictures would prove the
+    scorecard and nothing about ranking. Variants differ by a couple of levels
+    of brightness and a sub-pixel blur, which a person sees and a dHash does not.
+    """
+    from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
     folder.mkdir(parents=True, exist_ok=True)
+    base = Image.new("RGB", (900, 600), (24, 28, 32))
+    draw = ImageDraw.Draw(base)
+    for step in range(0, 900, 18):
+        shade = 40 + (step * 7) % 190
+        draw.line([(step, 0), (step, 600)], fill=(shade, shade // 2 + 20, 90))
+    for row in range(0, 600, 28):
+        draw.line([(0, row), (900, row)], fill=(200, 180, 120))
+    draw.ellipse([(120, 90), (420, 330)], fill=(210, 150, 60))
+    draw.rectangle([(520, 200), (820, 470)], fill=(60, 90, 140))
     made: list[Path] = []
     for index in range(count):
-        image = Image.new("RGB", (900, 600), (24 + index * 12, 28, 32))
-        draw = ImageDraw.Draw(image)
-        for step in range(0, 900, 6 + index * 9):
-            shade = 40 + (step * (index + 1) * 7) % 190
-            draw.line([(step, 0), (step, 600)], fill=(shade, shade // 2 + 20, 90))
-        for row in range(0, 600, 24 + index * 4):
-            draw.line([(0, row), (900, row)], fill=(200 - index * 15, 180, 120))
+        image = ImageEnhance.Brightness(base).enhance(1.0 + index * 0.03)
         if index % 2:
-            image = image.filter(ImageFilter.GaussianBlur(radius=0.6 + index * 0.5))
-        path = folder / f"variant_{index + 1:02d}.png"
+            image = image.filter(ImageFilter.GaussianBlur(radius=0.2 + index * 0.15))
+        path = folder / f"scene_{index + 1:02d}.png"
         image.save(path)
         made.append(path)
     return made
@@ -199,6 +208,34 @@ def _local_axis_values(entries: list[dict]) -> dict[str, float]:
             if axis and isinstance(value, (int, float)):
                 values.setdefault(axis, float(value))
     return values
+
+
+def _stop_app(pid: int) -> None:
+    """SIGTERM the app we started, wait, and drop its socket file.
+
+    A leftover socket from a killed app makes the NEXT run connect to a dead
+    address while ``wait_for(sock.exists())`` sees a file and passes — measured
+    2026-10-28: the run failed with ``ConnectionRefusedError`` on a socket whose
+    owner was already gone.
+    """
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    deadline = time.monotonic() + 20.0
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.5)
+    for key in ("IMGSLI_MCP_CONTROL_SOCKET",):
+        path = os.environ.get(key)
+        if path:
+            try:
+                Path(path).unlink()
+            except OSError:
+                pass
 
 
 def _control_client(sock: Path):
@@ -277,6 +314,22 @@ def main(argv: list[str] | None = None) -> int:
         app_pid = int(ping.get("pid") or 0) or None
         verdict["app_pid"] = app_pid
 
+        # The AI tail settling is NOT the local pass settling: the stage-2 lanes
+        # keep measuring (measured 2026-10-28 — reading/killing right after the
+        # judge finished found an empty local-metrics cache and would have
+        # "proved" the local side absent).
+        settled_local = False
+        deadline = time.monotonic() + 150.0
+        while time.monotonic() < deadline:
+            state_now = control.call("get_state", path="tabs.image_gallery").get("state") or {}
+            size = int(state_now.get("metrics_cache_size") or 0)
+            count = int(state_now.get("item_count") or 0)
+            if count and size >= count:
+                settled_local = True
+                break
+            time.sleep(1.5)
+        verdict["local_pass_settled"] = settled_local
+
         try:
             trace = control.call("query_trace", filter=JUDGE_ONLY_AXIS, n=40)
             verdict["trace_hits"] = [
@@ -299,14 +352,12 @@ def main(argv: list[str] | None = None) -> int:
             "judge_run_done": [ln["text"] for ln in log_tail if "judge run done" in ln.get("text", "")],
             "profile_source": [ln["text"] for ln in log_tail if "profile source" in ln.get("text", "")],
             "wire": [ln["text"] for ln in log_tail if "analyze wire ready" in ln.get("text", "")][:4],
-            "rank": [ln["text"] for ln in log_tail if "jev rank" in ln.get("text", "")][:6],
+            "rank": [ln["text"] for ln in log_tail if "jev rank" in ln.get("text", "")][:8],
+            "analyze_start": [ln["text"] for ln in log_tail if "analyze start" in ln.get("text", "")][:8],
         }
     finally:
         if app_pid and not args.keep_app:
-            try:
-                os.kill(app_pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
+            _stop_app(app_pid)
         requests = list(stub.requests)
         stub.close()
         if lease is not None:
@@ -357,8 +408,12 @@ def main(argv: list[str] | None = None) -> int:
             axis in row["axes"] for row in ai_entries for axis in LOCAL_ONLY_AXES
         ),
         "rank_reached_the_ranker": any(
-            "jev rank" in line for line in verdict["log_lines"]["rank"]
+            marker in line
+            for line in verdict["log_lines"]["rank"]
+            for marker in ("jev rank complete", "jev rank applied", "jev rank =>")
         ),
+        "judge_request_carried_no_local_metrics": bool(verdict["log_lines"].get("analyze_start"))
+        and all("metrics=0" in line for line in verdict["log_lines"]["analyze_start"]),
     }
     verdict["checks"] = checks
     verdict["ok"] = all(checks.values())
