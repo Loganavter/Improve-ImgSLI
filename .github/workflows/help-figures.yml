@@ -88,6 +88,15 @@ jobs:
       # defeat both the capture and the DPI pin.
       - name: Check Help Figure Drift
         working-directory: app
+        # ADVISORY until the baselines are regenerated in THIS environment.
+        # Measured 2026-10-28 on a runner: `drift=32, ok=16` — the committed
+        # hashes were produced on the author's host (fonts, DPR), so the gate is
+        # red by construction here. Step-level (not job-level) on purpose: a
+        # job-level `continue-on-error` leaves the CHECK red while the run is
+        # green, which reads as a failure in every PR. The per-figure table still
+        # prints, and the way back to a gate is regenerating
+        # `src/devtools/help_figures.json` in the workflow's own environment.
+        continue-on-error: true
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
           PYTHONDONTWRITEBYTECODE: "1"
