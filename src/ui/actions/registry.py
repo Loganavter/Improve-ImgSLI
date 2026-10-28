@@ -243,27 +243,31 @@ def compute_action_haystacks(
     shortcut: str | None = None,
     search_keys: tuple[str, ...] = (),
     search_terms: tuple[str, ...] = (),
+    include_description: bool = True,
 ) -> tuple[str, ...]:
     """Normalized search texts for one catalog-shaped row (uncached).
 
-    Shared by Find Action and Settings → Keyboard so both surfaces match the
-    same fields: id, label, description, breadcrumb, topic, chord, aliases.
+    Fields: id, label, breadcrumb, topic, chord, aliases — plus the catalog
+    *description* for Settings → Keyboard, which keeps it. Find Action does
+    **not** search descriptions (owner decision 2026-10-28: the description is
+    prose about the action, not a name for it; matching it makes every query
+    hit unrelated rows and multiplies the per-action haystack).
+
+    ``include_description=False`` drops both the raw key and its translations.
     """
     parts = [
         action_id,
         label_key,
-        description_key or "",
         " ".join(breadcrumb),
         topic or "",
         shortcut or "",
         " ".join(search_terms),
     ]
-    for key in (
-        label_key,
-        description_key or "",
-        *breadcrumb,
-        *search_keys,
-    ):
+    keys: list[str] = [label_key, *breadcrumb, *search_keys]
+    if include_description:
+        parts.insert(2, description_key or "")
+        keys.insert(1, description_key or "")
+    for key in keys:
         if key:
             parts.extend(_texts_for_key(key))
     return tuple(_normalize(part) for part in parts if part)
@@ -283,6 +287,7 @@ def _haystacks(action: ActionDescriptor) -> tuple[str, ...]:
         shortcut=action.shortcut,
         search_keys=search_keys,
         search_terms=tuple(getattr(action, "search_terms", ()) or ()),
+        include_description=False,
     )
     _HAYSTACK_CACHE[action.action_id] = normalized
     return normalized
