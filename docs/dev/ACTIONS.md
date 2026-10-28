@@ -36,7 +36,7 @@ keyboard defaults listing via `notify_all("contribute_keymap_defaults", …)`.
 ### Action ids in the control surface
 
 An action id is also the MCP click handle suffix: the element inventory builds
-`f"{element_id}@{action_id}"` (`src/core/control/elements/inventory.py:307`), so
+`f"{element_id}@{action_id}"` (`elements.inventory._walk`), so
 every catalog action is reachable by id through `ui_click` and appears in the
 UI layout dump. Adding an action therefore also extends the agent-visible
 control surface — see [MCP.md](MCP.md).
@@ -209,7 +209,7 @@ Tab chrome strings live under `tabs/<tab>/resources/i18n/`.
   `target.widget` is currently `isHidden()` (UI-mode toolbar slots that are off
   the active layout) — lazy targets with `ensure_visible` / `resolve_widget`
   stay listed. The shortcut binder passes `chrome_only=False`
-  (`src/ui/actions/binder.py:220`) so a hidden button's shortcut still fires;
+  (`ActionShortcutBinder`, `ui/actions/binder`), so a hidden button's shortcut still fires;
 - optional word filter on id / keys / translated label & description /
   breadcrumb / topic (every whitespace-separated token must match);
 - ranks each action once per call and reuses that rank for both the filter
@@ -301,8 +301,8 @@ overrides are resolved once per rebuild (`current_keyboard_overrides` in
      (`image_compare.interpolation.lanczos`, …).
    - `InterpolationFlyoutController.show` / `open` first runs
      `ensure_panel_visible()`
-     (`src/tabs/image_compare/ui/transient_interpolation.py:299`, called from
-     `show` at `:61`; enable magnifier + show
+     (`transient_interpolation.InterpolationFlyoutController.ensure_panel_visible`,
+     called from its `show`; enable magnifier + show
      `magnifier_settings_panel`) — mirrors
      `FontSettingsController._ensure_text_settings_chrome` for the edit row.
    - Enter applies via `choose_data` / combo index; reveal opens the list
@@ -322,11 +322,11 @@ Host code under `ui/presenters/` and `ui/main_window/` must not import
 
 - Help menu → Find Action
 - `Ctrl+Shift+P` on the main window — a catalog action, `platform.find_action`
-  (`src/ui/actions/platform.py:134`), bound by the main-window menu controller
-  (`menu_controller.py:328`) and installed by `ActionShortcutBinder` like every
+  (`platform.find_action`, `ui/actions/platform`), bound by the main-window menu controller
+  (`MenuController._resync_action_shortcuts`) and installed by `ActionShortcutBinder` like every
   other shortcut; there is no dedicated installer for it
 - `Ctrl+Shift+P` on Video Editor / Export dialogs
-  (`install_dialog_find_action_shortcut`, `src/ui/actions/palette/__init__.py:144`)
+  (`install_dialog_find_action_shortcut`, `ui/actions/palette`)
 - `context.call_service("show_command_palette", query=..., topic=...)`
 
 Opening the palette always calls `refresh_open_dialog_find_actions()` so any

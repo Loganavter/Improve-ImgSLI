@@ -104,6 +104,9 @@ class DiagnosticsPlugin(Plugin, IControllablePlugin, IServicePlugin):
         self._presenter: _ReportPresenter | None = None
         self._dialog: Any | None = None
         self._action_id: str | None = None
+        #: Last session's failure payload while the startup offer is up.
+        self._pending_failure: dict[str, Any] | None = None
+        self._offer: Any | None = None
 
     # -- lifecycle --------------------------------------------------------
 
@@ -331,45 +334,35 @@ class DiagnosticsPlugin(Plugin, IControllablePlugin, IServicePlugin):
             except Exception:
                 pass
 
+    # -- previous-session offer -------------------------------------------
+
+    def offer_unclean_shutdown(self, previous: Any) -> bool:
+        """Offer a report for a session that did not exit normally.
+
+        The startup path calls this with the marker's ``PreviousSession``; the
+        decision lives in ``unclean_offer`` (file-size policy), this is the host's
+        seam. Returns ``False`` when the user opted out — never raises.
+        """
+        from . import unclean_offer
+
+        return unclean_offer.offer(self, previous)
+
     # -- dialog -----------------------------------------------------------
 
     def _schedule_dialog(self, diagnostics: report.DiagnosticsReport) -> None:
-        presenter = self._presenter
-        if presenter is not None:
-            try:
-                presenter.request(diagnostics)
-                return
-            except Exception:
-                pass
-        try:
-            QTimer.singleShot(0, lambda: self._show_dialog(diagnostics))
-        except Exception:
-            pass
+        from . import report_ui
+
+        report_ui.schedule(self, diagnostics)
 
     def _show_dialog(self, diagnostics: report.DiagnosticsReport) -> None:
-        try:
-            from .dialog import show_diagnostics_dialog
+        from . import report_ui
 
-            existing = self._dialog
-            if existing is not None:
-                try:
-                    existing.close()
-                except Exception:
-                    pass
-            self._dialog = show_diagnostics_dialog(
-                diagnostics, parent=self._parent_widget()
-            )
-        except Exception:
-            logger.exception("diagnostics: failed to show report dialog")
+        report_ui.show(self, diagnostics)
 
     def _parent_widget(self) -> Any | None:
-        try:
-            from PySide6.QtWidgets import QApplication
+        from . import report_ui
 
-            app = QApplication.instance()
-            return app.activeWindow() if app is not None else None
-        except Exception:
-            return None
+        return report_ui.parent_widget()
 
     # -- runtime context --------------------------------------------------
 

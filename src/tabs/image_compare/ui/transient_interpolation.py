@@ -421,9 +421,9 @@ class InterpolationFlyoutController:
         the selection. Cancelling here "pins" it open until the next real
         hover/click elsewhere re-establishes normal auto-hide.
         """
-        settings_flyout = getattr(self.widget, "magnifier_settings_flyout", None)
-        if settings_flyout is not None:
-            settings_flyout.cancel_auto_hide()
+        hover = getattr(self.widget, "_magnifier_settings_hover", None)
+        if hover is not None:  # always built with the widget (widget.py)
+            hover.note_child_pick_closed()  # cancel + armed post-pick watch
 
     def has_focus_inside(self, new_widget) -> bool:
         if new_widget is None:

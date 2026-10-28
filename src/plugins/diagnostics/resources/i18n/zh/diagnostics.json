@@ -9,6 +9,11 @@
     "open_issue": "打开 issue",
     "close": "关闭",
     "save_dialog_title": "保存诊断报告",
+    "unclean_title": "上次会话",
+    "unclean_body": "上次会话未正常退出。诊断报告将包含上次日志的末尾；如果应用崩溃，还会包含崩溃堆栈。不会自动发送任何内容——由您选择「复制」「保存」或「打开 issue」。",
+    "unclean_create": "创建报告",
+    "unclean_dismiss": "暂不",
+    "unclean_never": "不再询问",
     "action": {
       "create_report": "创建诊断报告",
       "create_report_desc": "生成本地诊断报告并选择「复制」/「保存」/「打开 issue」。"

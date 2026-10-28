@@ -15,6 +15,7 @@ import json
 import os
 import re
 import signal
+import sys
 import time
 from pathlib import Path
 
@@ -286,7 +287,10 @@ def _stop_app(pid: int) -> None:
 
 
 def _control_client(sock: Path):
-    sys.path.insert(0, str(REPO_ROOT / "src"))
+    """The minimal control client (imported lazily: the module is a script)."""
+    src = Path(__file__).resolve().parents[1]
+    if str(src) not in sys.path:
+        sys.path.insert(0, str(src))
     from devtools.live_gallery_ai_run import Control
 
     return Control(sock)

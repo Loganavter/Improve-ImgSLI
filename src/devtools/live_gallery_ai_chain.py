@@ -43,6 +43,15 @@ import sys
 import time
 from pathlib import Path
 
+# The tool is run as a SCRIPT (`venv/bin/python src/devtools/live_gallery_ai_chain.py`),
+# which puts `src/devtools` on sys.path, not `src` — so its own package import
+# needs the repo root added BEFORE it runs. (Measured 2026-10-28: after the split
+# into `live_gallery_ai_common` the tool died with ModuleNotFoundError: devtools
+# while the tests, which set PYTHONPATH=src, stayed green.)
+_SRC = Path(__file__).resolve().parents[1]
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
 from devtools.live_gallery_ai_common import (
     JUDGE_ONLY_AXIS,
     JUDGE_SCORE,
@@ -84,6 +93,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=Path("/tmp/opencode/w7-ai-chain.json"))
     parser.add_argument("--keep-app", action="store_true")
     parser.add_argument("--debug", action="store_true", help="IMGSLI_DEBUG=1 (gallery diagnostics)")
+    parser.add_argument(
+        "--reset-via", choices=("menu", "action"), default="menu",
+        help="how the reset scenario fires 'Reset metrics cache': the card menu "
+             "(what a user had before the Find Action rows existed) or the "
+             "pool-wide gallery.reset-metrics action",
+    )
     parser.add_argument("--lease", default=None, help="allocate and release a lease for this proof")
     args = parser.parse_args(argv)
 
@@ -180,12 +195,20 @@ def main(argv: list[str] | None = None) -> int:
                     ).get("state")
                     reset_info["cache_files_before"] = before
                     reset_info["at_ms"] = int(time.time() * 1000)
-                    # Drive the RESET the way a user does (card context menu).
-                    # The Find Action id ``gallery.reset-metrics`` exists in the
-                    # code but is NOT registered in the live palette (measured
-                    # 2026-10-28: 170 actions, zero ``gallery.*``; the same call
-                    # in-process registers all six), so run_action cannot be the
-                    # proof path here.
+                    if args.reset_via == "action":
+                        # The pool-wide reset: the Find Action row the gallery
+                        # now registers itself (app #776). Before that fix the
+                        # palette had ZERO ``gallery.*`` ids and this path was
+                        # unreachable, which is why the card menu was the only
+                        # drive available.
+                        control_now.call("run_action", action_id="gallery.reset-metrics")
+                        reset_info["via"] = "run_action gallery.reset-metrics"
+                        time.sleep(0.5)
+                        reset_info["state_after"] = control_now.call(
+                            "get_state", path="tabs.image_gallery"
+                        ).get("state")
+                        reset_info["fired"] = True
+                        return
                     cards = [
                         row for row in (control_now.call("ui_elements").get("elements") or [])
                         if row.get("role") == "card" and row.get("label") == "Button"

@@ -61,6 +61,10 @@ class MagnifierSettingsHoverController(QObject):
         # ``timeout:hide MagnifierSettingsFlyout cursor=1343,875`` on the
         # panel body).
         self._backstop = DelayedActionTimer(self._hide_if_outside, parent=widget)
+        #: True while the panel is kept open after a child pick and no real
+        #: hover event is guaranteed to arrive again (see
+        #: note_child_pick_closed): the backstop then re-validates on a timer.
+        self._orphan_watch = False
         self._mode_picker_flyouts_wired: set = set()
         self._group_buttons: set = set()
         # Decision journal (shared toolkit helper): every show/hide/schedule
@@ -499,8 +503,13 @@ class MagnifierSettingsHoverController(QObject):
             self._hide_immediately()
         else:
             self._note(f"hide:backstop:still-{reason}", chain)
+            if self._orphan_watch:
+                # Post-pick watch: keep re-validating until the cursor leaves
+                # (or a real hover event takes over, see _cancel_hide).
+                self._backstop.start(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
 
     def _hide_immediately(self) -> None:
+        self._orphan_watch = False
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
         if flyout is not None and flyout.isVisible():
             self._note("hide:immediate", self._cursor_chain().strip())
@@ -608,10 +617,30 @@ class MagnifierSettingsHoverController(QObject):
 
         FlyoutManager.get_instance().link(settings_flyout, flyout)
 
-    def _cancel_settings_auto_hide(self) -> None:
+    def note_child_pick_closed(self) -> None:
+        """A linked child list (interpolation, colors, mode picker) closed on a pick.
+
+        The pick must not cut the panel off, so the pending hide is cancelled.
+        But cancelling alone *pins*: those lists are separate surfaces with no
+        event filter of their own (see ``_combined_reason``), so when the cursor
+        stays on one and the list closes, no later Enter/Leave ever reaches the
+        panel and nothing re-arms - the panel then stays open until an unrelated
+        click (owner report 2026-10-28: "it never closes, even when the mouse
+        goes to the other end of the screen").
+
+        So: cancel, then arm the backstop, and let ``_hide_if_outside`` keep
+        re-arming it while the cursor is still inside the unit. The panel closes
+        as soon as the cursor is really outside, whatever events Qt did or did
+        not deliver in between.
+        """
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
         if flyout is not None:
             flyout.cancel_auto_hide()
+        self._orphan_watch = True
+        self._backstop.start(AppConstants.TRANSIENT_AUTO_HIDE_DELAY_MS)
+
+    def _cancel_settings_auto_hide(self) -> None:
+        self.note_child_pick_closed()
 
     def _schedule_hide(self) -> None:
         flyout = getattr(self.widget, "magnifier_settings_flyout", None)
@@ -632,5 +661,9 @@ class MagnifierSettingsHoverController(QObject):
         timer = getattr(flyout, "_auto_hide", None)
         if timer is None or bool(timer._timer.isActive()):
             self._note("hide:cancel", "")
+        # The cursor is back inside the unit (or the panel just opened): the
+        # event-driven lifecycle owns the panel again, the post-pick watch is
+        # no longer needed.
+        self._orphan_watch = False
         self._backstop.stop()
         flyout.cancel_auto_hide()

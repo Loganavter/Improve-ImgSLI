@@ -72,17 +72,41 @@ def ensure_stdio() -> None:
         sys.stderr = open(os.devnull, "w", encoding="utf-8", errors="replace")
 
 
-def enable_faulthandler() -> None:
+def default_fault_dump_path() -> str:
+    """Where a frozen/windowed build keeps its crash traceback.
+
+    The app-data ``logs`` dir, next to ``log.txt``: a traceback a user can
+    attach to the report AND a path the next start's session marker can find.
+    A frozen Windows build has no console at all, so without a file the segfault
+    leaves nothing behind — the run simply vanishes.
+    """
+    try:
+        from core.control.app_paths import app_data_dir
+
+        return str(app_data_dir() / "logs" / "fault-dump.log")
+    except Exception:
+        return os.path.join(tempfile.gettempdir(), "imgsli_fault_dump.log")
+
+
+def enable_faulthandler() -> str | None:
     # Opt-in hang dumps: set IMGSLI_FAULT_DUMP=1 (optional IMGSLI_FAULT_DUMP_FILE /
     # IMGSLI_FAULT_DUMP_INTERVAL). The default lands in the system temp dir
     # (portable — Windows has no POSIX temp dir); an explicit _FILE is used
     # verbatim.
     # Never raises — a path problem disables the dump with one warning instead
     # of aborting startup before Qt (call order in ``__main__``).
-    if _env_flag("IMGSLI_FAULT_DUMP"):
+    # A frozen/windowed build has no stderr to dump into, so the file is the
+    # whole point: enable it WITHOUT the opt-in flag there, and into the app-data
+    # dir (``default_fault_dump_path``) so the next start can attach it to the
+    # unclean-shutdown report. The path is returned so the caller can record it
+    # in the session marker.
+    frozen = bool(getattr(sys, "frozen", False))
+    if _env_flag("IMGSLI_FAULT_DUMP") or frozen:
         fault_dump_path = _env_value(
             "IMGSLI_FAULT_DUMP_FILE",
-            os.path.join(tempfile.gettempdir(), "imgsli_fault_dump.log"),
+            default_fault_dump_path() if frozen else os.path.join(
+                tempfile.gettempdir(), "imgsli_fault_dump.log"
+            ),
         )
         try:
             fault_dump_file = open(fault_dump_path, "w", encoding="utf-8")
@@ -100,7 +124,7 @@ def enable_faulthandler() -> None:
             )
         except Exception as exc:  # noqa: BLE001 (startup must survive any path error)
             _report_disabled_dump(fault_dump_path, exc)
-        return
+        return fault_dump_path
 
     try:
         # Needs a real OS fileno; skip quietly when stdio is a non-fd sink.
@@ -110,3 +134,4 @@ def enable_faulthandler() -> None:
         faulthandler.enable()
     except Exception:
         pass
+    return None
