@@ -136,10 +136,30 @@ def _assert_title_bar_navigation(
     qapp.processEvents()
     after_up = QApplication.focusWidget()
     if up_returns_to_bar:
-        assert after_up is not None and bar.isAncestorOf(after_up), (
-            "Up from the first row must return to the title bar "
-            f"(got {type(after_up).__name__})"
-        )
+        if after_up is None or not bar.isAncestorOf(after_up):
+            # The failure only ever reproduced on a CI runner, so the message
+            # has to carry the discriminator: WHICH section took the focus and
+            # what the manager had registered. "got Button" alone cost two
+            # rounds of guessing.
+            chain: list[str] = []
+            node = after_up
+            while node is not None and len(chain) < 6:
+                chain.append(type(node).__name__)
+                node = node.parent()
+            sections: list[str] = []
+            for owner in getattr(manager, "_sections", {}) or {}:
+                try:
+                    sections.append(f"{type(owner).__name__}:{type(getattr(manager, 'section_for', lambda *_: None)(owner)).__name__}")
+                except Exception:
+                    sections.append(type(owner).__name__)
+            raise AssertionError(
+                "Up from the first row must return to the title bar — "
+                f"got {type(after_up).__name__}, chain={chain}, "
+                f"in_bar={after_up is not None and bar.isAncestorOf(after_up)}, "
+                f"bar_visible={bar.isVisible()}, dialog={dialog.size().toTuple()}, "
+                f"active_window={QApplication.activeWindow() is dialog}, "
+                f"row={type(focused).__name__}, sections={sections}"
+            )
     else:
         assert after_up is focused, (
             "at the modal top row the Up key is consumed and focus stays put"
