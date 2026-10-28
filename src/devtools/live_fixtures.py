@@ -26,10 +26,18 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+from devtools.live_stub_answers import (
+    Answer,
+    AnswerError,
+    Resolved,
+    completion_body,
+    resolve_answer,
+    sse_body,
+)
 
 #: Fixed id on ``GET /v1/models`` (and the fallback request model); never a real one.
 STUB_MODEL_ID = "stub-model"
@@ -294,76 +302,6 @@ def _clipboard_stderr(process: subprocess.Popen) -> str:
     return _tail(process.stderr.read() if process.stderr is not None else None)
 
 
-@dataclass(frozen=True)
-class _Answer:
-    """Resolved fixture answer: the message content plus an optional full body."""
-
-    content: Any
-    completion: dict | None
-
-
-def _load_answer(answer: dict | str | Path) -> _Answer:
-    if isinstance(answer, Path):
-        try:
-            return _load_answer(json.loads(Path(answer).read_text(encoding="utf-8")))
-        except OSError as exc:
-            raise FixtureError(f"could not read stub answer {answer}: {exc}") from exc
-        except json.JSONDecodeError as exc:
-            raise FixtureError(f"stub answer {answer} is not JSON: {exc}") from exc
-    if isinstance(answer, str):
-        return _Answer(answer, None)
-    if isinstance(answer, dict):
-        if "choices" in answer:
-            try:
-                return _Answer(answer["choices"][0]["message"]["content"], dict(answer))
-            except (IndexError, KeyError, TypeError) as exc:
-                raise FixtureError(
-                    "stub answer with 'choices' needs choices[0].message.content"
-                ) from exc
-        if "content" in answer:
-            return _Answer(answer["content"], None)
-        return _Answer(answer, None)
-    raise FixtureError(f"stub answer must be a dict, str or Path, got {type(answer).__name__}")
-
-
-def _completion_body(answer: _Answer, model: str) -> dict:
-    if answer.completion is not None:
-        return answer.completion
-    message = {"role": "assistant", "content": answer.content}
-    return {
-        "id": "chatcmpl-stub", "object": "chat.completion",
-        "created": STUB_CREATED, "model": model,
-        "choices": [{"index": 0, "message": message, "finish_reason": "stop"}],
-    }
-
-
-def _stream_text(answer: _Answer) -> str:
-    content = answer.content
-    return content if isinstance(content, str) else json.dumps(content, ensure_ascii=False, sort_keys=True)
-
-
-def _sse_body(answer: _Answer, model: str) -> bytes:
-    chunk = {
-        "id": "chatcmpl-stub", "object": "chat.completion.chunk",
-        "created": STUB_CREATED, "model": model,
-        "choices": [{
-            "index": 0,
-            "delta": {"role": "assistant", "content": _stream_text(answer)},
-            "finish_reason": None,
-        }],
-    }
-    final = {
-        "id": "chatcmpl-stub", "object": "chat.completion.chunk",
-        "created": STUB_CREATED, "model": model,
-        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-    }
-    return (
-        f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
-        f"data: {json.dumps(final, ensure_ascii=False)}\n\n"
-        "data: [DONE]\n\n"
-    ).encode("utf-8")
-
-
 def _error(message: str) -> dict:
     return {"error": {"message": message, "type": "invalid_request_error"}}
 
@@ -372,7 +310,8 @@ class _StubServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, address: tuple[str, int], answer: _Answer, requests: list[dict]):
+    def __init__(self, address: tuple[str, int], answer: Answer, requests: list[dict]):
+        #: A fixed reply OR a router ``(body) -> reply``; resolved per request.
         self.answer = answer
         self.recorded = requests
         super().__init__(address, _StubHandler)
@@ -418,8 +357,15 @@ class _StubHandler(BaseHTTPRequestHandler):
         server = self.server
         assert isinstance(server, _StubServer)
         model = str(body.get("model") or STUB_MODEL_ID)
+        try:
+            answer = resolve_answer(server.answer, body)
+        except AnswerError as exc:
+            # A router bug is a fixture error the CALLER must see as a reply,
+            # not as a dropped connection that looks like a network failure.
+            self._send_json(500, _error(str(exc)))
+            return
         if body.get("stream"):
-            payload = _sse_body(server.answer, model)
+            payload = sse_body(answer, model, created=STUB_CREATED)
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
@@ -428,7 +374,7 @@ class _StubHandler(BaseHTTPRequestHandler):
             self.wfile.write(payload)
             self.wfile.flush()
             return
-        self._send_json(200, _completion_body(server.answer, model))
+        self._send_json(200, completion_body(answer, model, created=STUB_CREATED))
 
     def _record(self, method: str, path: str, body: dict | None, raw: bytes) -> None:
         server = self.server
@@ -483,18 +429,23 @@ class AiStub:
             raise FixtureError("AI stub thread did not stop")
 
 
-def ai_stub_server(answer: dict | str | Path, *, port: int = 0) -> AiStub:
+def ai_stub_server(answer: Answer, *, port: int = 0) -> AiStub:
     """Serve ``/v1/chat/completions`` and ``/v1/models`` on localhost.
 
-    *answer* is the fixed reply: a plain string becomes
+    *answer* is the reply: a plain string becomes
     ``choices[0].message.content``, a dict is either a full completion (when it
-    carries ``choices``) or the content mapping, and a :class:`~pathlib.Path`
-    is read as JSON. The non-streaming JSON response and the streaming SSE
-    response (``data: …`` chunks then ``data: [DONE]``) carry the same answer.
+    carries ``choices``) or the content mapping, a :class:`~pathlib.Path` is
+    read as JSON, and a **callable** receives the parsed request body and
+    returns any of those shapes — which is how one stub answers the two
+    different questions a real AI-domain run asks (a metric-profile proposal
+    wants a JSON list of axes, a scorecard a JSON object of axis scores).
+    The non-streaming JSON response and the streaming SSE response (``data: …``
+    chunks then ``data: [DONE]``) carry the same answer.
 
     Bound to ``127.0.0.1`` only; ``port=0`` picks a free port. Every request is
-    recorded on :attr:`AiStub.requests`; unknown paths answer 404 JSON.
+    recorded on :attr:`AiStub.requests`; unknown paths answer 404 JSON, and a
+    router that fails answers 500 JSON whose message names the router error.
     """
     requests: list[dict] = []
-    server = _StubServer(("127.0.0.1", int(port)), _load_answer(answer), requests)
+    server = _StubServer(("127.0.0.1", int(port)), answer, requests)
     return AiStub(server)

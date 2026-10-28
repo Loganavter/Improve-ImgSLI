@@ -215,6 +215,55 @@ def test_stub_reads_a_json_answer_from_disk(scratch):
     assert reply["choices"][0]["message"]["content"] == "from disk"
 
 
+def test_a_router_answers_each_question_shape_differently():
+    """One stub, two questions: the profile proposal and the scorecard.
+
+    A real AI-domain run asks both, and the two answers have different JSON
+    shapes (a LIST of axis proposals vs an OBJECT of axis scores), so a single
+    fixed reply cannot serve a run. The router sees the request body, which is
+    the only place the difference is visible.
+    """
+    profile_answer = {"axes": [{"name": "halation", "label": "Halation",
+                                "definition": "0 = none, 100 = everywhere",
+                                "scale": "0-100", "direction": "lower-is-better"}]}
+    scorecard_answer = {"axes": {"sharpness": 37}, "reason": "stub"}
+
+    def router(body):
+        # A real API puts JSON TEXT in ``content``, so a router answering a
+        # parser must serialize: a dict here would arrive as an object and the
+        # app's parser (which json.loads a string) would call it empty.
+        text = json.dumps(body)
+        chosen = profile_answer if "FROM 5 TO 8 axes" in text else scorecard_answer
+        return json.dumps(chosen)
+
+    with lf.ai_stub_server(router) as stub:
+        first = _post_json(stub.base_url + "/chat/completions", {
+            "model": "m",
+            "messages": [{"role": "user", "content": "name FROM 5 TO 8 axes"}],
+        })
+        second = _post_json(stub.base_url + "/chat/completions", {
+            "model": "m",
+            "messages": [{"role": "user", "content": "score this frame"}],
+        })
+
+    assert json.loads(first["choices"][0]["message"]["content"]) == profile_answer
+    assert json.loads(second["choices"][0]["message"]["content"]) == scorecard_answer
+    assert len(stub.requests) == 2
+
+
+def test_a_failing_router_answers_500_json_instead_of_dropping_the_connection():
+    def router(body):
+        raise RuntimeError("router exploded")
+
+    with lf.ai_stub_server(router) as stub:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            _post_json(stub.base_url + "/chat/completions", {"model": "m", "messages": []})
+
+    assert exc.value.code == 500
+    payload = json.loads(exc.value.read())
+    assert "router exploded" in payload["error"]["message"]
+
+
 def test_stub_close_frees_the_port_and_stops_its_thread():
     stub = lf.ai_stub_server("x")
     port = stub.port
