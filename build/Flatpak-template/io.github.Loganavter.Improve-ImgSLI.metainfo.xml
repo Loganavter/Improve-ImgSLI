@@ -4,50 +4,60 @@
   <metadata_license>MIT</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <name>BlinkTable</name>
-  <summary>A workspace to compare, measure and prove image quality</summary>
+  <summary>Compare, measure and prove image quality — pick the keeper</summary>
   <description>
     <p>
-      BlinkTable is an open-source workspace where image and video quality is compared, measured and proven: pixel-level inspection, objective metrics, a ranked verdict and an exported still or recorded comparison. It is built for artists, photographers, retouchers, upscaling and ML pipelines, and anyone who needs to compare images at pixel level without losing context.
+      BlinkTable is a workspace where image and video quality is compared, measured and proven: split, zoom, magnifiers, difference modes, objective metrics, a ranked verdict and an export that matches what is on screen. It is built for photographers, retouchers, upscaling and ML pipelines, and anyone who has to compare images at pixel level without losing context.
     </p>
-    <p>Key features include:</p>
+    <p>Three workspaces over one rendering path:</p>
     <ul>
-      <li>Compare images with a movable horizontal or vertical split line, including zooming and panning in the main canvas.</li>
-      <li>Use one or more synchronized magnifiers with adjustable capture areas, display sizes, freeze mode, combined layouts, internal split, per-instance colors, and keyboard-assisted positioning.</li>
-      <li>Load and manage multiple images per side with drag-and-drop, list switching, swapping, and direct filename editing.</li>
-      <li>Inspect visual differences with rendering-aware preview controls and selectable interpolation modes.</li>
-      <li>Export full-resolution comparison images with overlays, labels, and comparison state preserved.</li>
-      <li>Edit recorded comparison sessions in the built-in video editor with timeline selection, trimming, preview playback, and export.</li>
-      <li>Use a feature-contract based canvas architecture that keeps overlays, magnifiers, guide lines, settings, and export behavior synchronized.</li>
-      <li>Use persistent settings, multilingual interface support, and structured diagnostics for advanced troubleshooting.</li>
+      <li>Image Compare: two images under a movable horizontal or vertical split, with zoom, pan and one or more synchronized magnifiers that each carry their own capture area, size, freeze mode, color and keyboard position.</li>
+      <li>Multi Compare: a grid for any number of images that grows as needed, with synchronized zoom and pan, a dimmed focused slot and the same magnifier vocabulary.</li>
+      <li>Image Gallery: open a folder and get series with 0-100 quality scores, Grid and List views, sorting by Rank, Name, Date or AI quality, and triage that keeps your selection — Keep best, Reject, Remove from view, Clean rejected with Undo, Compare finalists.</li>
+    </ul>
+    <p>Scores, ranking and AI:</p>
+    <ul>
+      <li>Algorithms ranks a series by measured quality; opt-in AI ranking reads the same metrics with a model, and a hand-picked winner is shown as Ranked by Manual.</li>
+      <li>Ask AI works on a card, a selection or a series. Answers are advisory and carry the AI read, unverified badge; the key is stored unencrypted and saved metrics can be reset at any time.</li>
+      <li>Difference and channel modes, guide lines, filename overlays and a magnifier that maps to the crop box keep the judgment on the actual pixels.</li>
+    </ul>
+    <p>Recording, inspection and export:</p>
+    <ul>
+      <li>Record a comparison session and edit it in the built-in video editor — timeline selection, trimming, preview playback and export; a disk thumbnail cache keeps the strip responsive.</li>
+      <li>Export the full-resolution comparison with overlays, labels and the comparison state preserved, so the exported file matches what was on screen.</li>
+      <li>An MCP server ships with the app: a local stdio server with 23 tools for UI inventory, actions, state, logs, traces, screenshots, keystrokes and jobs, so an agent can drive and inspect a running instance.</li>
+      <li>Keyboard navigation reaches the whole app — tabs, dialogs, lists, the canvas, the video editor and the sliders; arrows navigate, Enter edits a value, Esc reverts, and shortcuts are remappable.</li>
+      <li>Contextual F1 help, illustrated topics and Learn more from every action in Find Action; a global Interface Scale resizes the entire UI from 0.5 to 2.5.</li>
     </ul>
     <p>
-      The application is distributed under the GPL-3.0-or-later License.
-      It uses PySide6 and Qt 6 (LGPL-3.0-or-later). See LICENSE and
-      THIRD_PARTY_LICENSES.md in the source repository for details.
+      BlinkTable is free software under the GPL-3.0-or-later License. It uses PySide6 and Qt 6 under the LGPL-3.0-or-later; see LICENSE and THIRD_PARTY_LICENSES.md in the source repository for the full list.
     </p>
   </description>
   <url type="homepage">https://github.com/Loganavter/Improve-ImgSLI</url>
-  <launchable type="desktop-id">io.github.Loganavter.Improve-ImgSLI.desktop</launchable>     
+  <url type="bugtracker">https://github.com/Loganavter/Improve-ImgSLI/issues</url>
+  <url type="vcs-browser">https://github.com/Loganavter/Improve-ImgSLI</url>
+  <url type="help">https://github.com/Loganavter/Improve-ImgSLI/blob/main/docs/dev/README.md</url>
+  <launchable type="desktop-id">io.github.Loganavter.Improve-ImgSLI.desktop</launchable>
   <screenshots>
     <screenshot type="default">
       <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_1.jpg</image>
-      <caption>Magnifier</caption>
+      <caption>A magnifier reads the pixels under the split</caption>
     </screenshot>
     <screenshot>
       <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_2.jpg</image>
-      <caption>Difference View</caption>
+      <caption>Difference view: what actually changed</caption>
     </screenshot>
     <screenshot>
       <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_3.jpg</image>
-      <caption>Multi Compare</caption>
+      <caption>Multi Compare: any number of sources in one grid</caption>
     </screenshot>
     <screenshot>
       <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_4.jpg</image>
-      <caption>Create a workspace</caption>
+      <caption>Pick a workspace: Image Compare, Multi Compare or Image Gallery</caption>
     </screenshot>
     <screenshot>
       <image>https://raw.githubusercontent.com/Loganavter/media_archive/2.0.0/Improve_ImgSLI/screenshots/screenshot_5.jpg</image>
-      <caption>Video Editor</caption>
+      <caption>Trim a recorded comparison in the video editor</caption>
     </screenshot>
   </screenshots>
   <developer id="io.github.loganavter">
@@ -58,14 +68,17 @@
     <release version="11.0.0" date="2026-10-22">
       <url>https://github.com/Loganavter/Improve-ImgSLI/releases/tag/v11.0.0</url>
       <description>
-        <p>A major release: a new Image Gallery workspace, a shared render engine, and a reworked toolkit foundation.</p>
+        <p>11.0.0 adds Image Gallery with AI-assisted triage, a local MCP server for agents, and a global Interface Scale; keyboard navigation now reaches the rest of the app, and the canvas, Multi Compare, the video editor and help all get a substantial update.</p>
         <ul>
-          <li>Image Gallery: a grid/review workspace with quality metrics, AI-assisted ranking, and triage.</li>
-          <li>Shared render engine: draw plans, residency, upload queue, and overlay shell moved out of the tabs; the comparison tabs are thin clients over one rendering path.</li>
-          <li>Overlays v2 and the video editor's thumbnail pipeline (pyramid, proxy, disk cache, trim margins).</li>
-          <li>Toolkit upgrade to sli-ui-toolkit 4.x: reworked buttons, flyouts, lists, scroll, and text surfaces.</li>
-          <li>Cropping, settings search, and help topics for the new workflows.</li>
-          <li>Packaging: pyvips streaming decode is now a hard dependency for Linux packages.</li>
+          <li>Image Gallery: a new tab — open a folder, get series, 0-100 quality scores, Grid and List views, sorting by Rank, Name, Date or AI quality, and a filter that keeps your selection.</li>
+          <li>AI ranking: one reading per metric, Algorithms ranking by measured quality, opt-in AI (Jev) ranking, a hand-picked winner shown as Ranked by Manual, and Ask AI on a card, a selection or a series — answers are advisory and carry the AI read, unverified badge.</li>
+          <li>Triage: Keep best, Reject, Remove from view (files stay on disk), Clean rejected to _rejected/ with Undo, Compare finalists (up to 12) and Reset metrics cache.</li>
+          <li>MCP server: a local stdio server with 23 tools (11 read-only, 12 that change state) for UI inventory, actions, state, logs, traces, screenshots, simulated keystrokes, jobs and wait_for.</li>
+          <li>Keyboard: Quick Look filmstrip, editable sliders, and keyboard-reachable dialogs, session picker, list pickers, tab strip and video editor, with focus rings for keyboard input.</li>
+          <li>Canvas and Multi Compare: clean rendering of large images, a magnifier that maps to the crop box, stable overlays, and a grid that grows past the old 12-slot cap.</li>
+          <li>Video editor: a disk thumbnail cache keeps the strip responsive and the export tabs are keyboard-reachable.</li>
+          <li>Help and appearance: contextual F1 topics, illustrated pages, Learn more from Find Action, and a global Interface Scale (0.5-2.5) that applies immediately.</li>
+          <li>Upgrading: sli-ui-toolkit 4.2.4 is required; torch, piq and pyvips are new hard dependencies; AI is opt-in and MCP clients should re-run tools/list.</li>
         </ul>
       </description>
     </release>
