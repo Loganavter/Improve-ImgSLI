@@ -1,8 +1,15 @@
 """Project open/save file dialogs — attached Qt dialogs, never native.
 
-**Why not the native chooser** (owner report 2026-10-28: after opening the image
+**Native, through the XDG desktop portal** (owner decision 2026-10-28: "вернуть
+нативный через портал" — the modern GNOME chooser). The portal chooser is a
+separate application whose window the portal itself parents, so we keep the
+native look *and* the stacking fix.
+
+The failure this replaced (owner report 2026-10-28: after opening the image
 export dialog, every later project file dialog appeared *under* the main window;
-"в остальных случаях порядок появления верный"). The documented family lives in
+"в остальных случаях порядок появления верный") came from Qt's *in-process* GTK
+dialog: a foreign window whose ``transient-for`` rides an exported parent surface
+plus an xdg-activation grant we do not control. The documented family lives in
 `docs/dev/platform/investigations/help-dialog-opens-below-main-window.md` and
 `flyout-restore-wayland-activation-notification.md`: mutter's
 ``meta_window_show()`` places a window that maps with
@@ -16,15 +23,11 @@ Desktop fights the same class by never depending on activation: it parents the
 dialog to the visible active top-level and suppresses its own delayed
 activation).
 
-A ``DontUseNativeDialog`` ``QFileDialog`` is an ordinary ``QDialog`` child of
-the main window, i.e. the **attached-dialog** shape Settings uses — "always
-above, mutter keeps attached dialogs above their parent" — so the ordering no
-longer depends on a token. It also stops a foreign GTK window from appearing in
-a fully self-themed app.
-
-Keep the instance API (not ``QFileDialog.getSaveFileName``): the static form
-hides the widget, so nothing can assert the modality/parent, and it cannot be
-styled or tested.
+What stays from the fix: the dialog is parented to the **visible active**
+top-level (not a stale/hidden one) and is **window-modal**, so whatever backend
+answers, the compositor has an attached-dialog shape to place. The instance API
+(not the static ``getSaveFileName``) keeps the parent/modality assertable — the
+static helpers hide the widget entirely.
 """
 
 from __future__ import annotations
@@ -61,7 +64,10 @@ def make_file_dialog(owner: "MainWindowProjectIo", *, for_save: bool) -> QFileDi
     from services.io.project_io import PROJECT_FILE_EXTENSION
 
     dialog = QFileDialog(_dialog_parent(owner))
-    dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+    # Native on purpose: with QT_QPA_PLATFORMTHEME=xdgdesktopportal (seeded in
+    # __main__._configure_linux_desktop_integrations) this resolves to the
+    # portal chooser. Never force DontUseNativeDialog here.
+    dialog.setOption(QFileDialog.Option.DontUseNativeDialog, False)
     dialog.setWindowModality(Qt.WindowModality.WindowModal)
     dialog.setNameFilter(
         owner._tr("menu.project_filter", "BlinkTable Project (*.blinktable *.imgsli)")

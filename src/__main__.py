@@ -125,6 +125,10 @@ def _configure_linux_desktop_integrations() -> None:
     # Rename both sides together, never this one alone.
     os.environ.setdefault("RESOURCE_NAME", "improve-imgsli")
 
+    from core.platform_theme import apply_portal_platform_theme
+
+    apply_portal_platform_theme()
+
     os.environ.setdefault("UBUNTU_MENUPROXY", "0")
     try:
         QApplication.setAttribute(

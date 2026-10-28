@@ -1,4 +1,4 @@
-"""The project file dialog must be an ATTACHED Qt dialog, never native.
+"""The project file dialog must be native-through-the-portal AND attached.
 
 Owner report 2026-10-28: after opening the image export dialog, every later
 project file dialog (File → Save/Save As **and** Open) appeared *under* the main
@@ -10,10 +10,11 @@ transient chain. A native GTK/portal chooser is a separate window whose
 transient-for depends on an exported parent surface and on an xdg-activation
 grant we do not control.
 
-So the dialogs are built as ``DontUseNativeDialog`` ``QFileDialog`` children of
-the visible active top-level, window-modal — the Settings shape ("attached
-dialogs stay above their parent"). The static ``QFileDialog.getSaveFileName``
-helpers could not even be asserted: they hide the widget.
+Owner decision (2026-10-28): keep the **modern GNOME chooser** — the portal
+provides it, and the portal parents its own window, so the stacking fix does not
+depend on Qt's in-process GTK dialog. What we keep from the fix: an explicit
+parent (the visible active top-level) and window-modal modality, so the
+compositor always has an attached-dialog shape to place.
 
 Red-before: on the previous code this module built no dialog object at all (the
 static helpers), so ``make_file_dialog`` did not exist and the GTK chooser had
@@ -66,9 +67,9 @@ def test_save_dialog_is_an_attached_qt_dialog(qapp, tmp_path):
     owner, shell = _owner(qapp, tmp_path)
     dialog = make_file_dialog(owner, for_save=True)
     try:
-        assert dialog.testOption(QFileDialog.Option.DontUseNativeDialog) is True, (
-            "a native chooser maps without a transient we control (mutter then "
-            "stacks it under the main window)"
+        assert dialog.testOption(QFileDialog.Option.DontUseNativeDialog) is False, (
+            "the dialog must stay native so the portal chooser answers "
+            "(QT_QPA_PLATFORMTHEME=xdgdesktopportal)"
         )
         assert dialog.windowModality() == Qt.WindowModality.WindowModal, (
             "an attached (window-modal) dialog is the shape mutter keeps above "
@@ -92,7 +93,7 @@ def test_open_dialog_targets_an_existing_project_file(qapp, tmp_path):
     owner._start = str(tmp_path)
     dialog = make_file_dialog(owner, for_save=False)
     try:
-        assert dialog.testOption(QFileDialog.Option.DontUseNativeDialog) is True
+        assert dialog.testOption(QFileDialog.Option.DontUseNativeDialog) is False
         assert dialog.windowModality() == Qt.WindowModality.WindowModal
         assert dialog.parent() is shell
         assert dialog.acceptMode() == QFileDialog.AcceptMode.AcceptOpen
