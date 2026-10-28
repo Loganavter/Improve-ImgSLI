@@ -155,8 +155,8 @@ def test_filmstrip_best_badge_localized_per_locale(language: str) -> None:
     """★ BEST is a keyed badge too — it used to stay English everywhere.
 
     ``image_gallery.badge.best`` did not exist in ANY catalogue, so the card
-    (``ui/card/visuals.py:184``) and the list
-    (``ui/list/regions.py:57``) asked for it and fell back to the stamped
+    (``src/tabs/image_gallery/ui/card/visuals.py:184``) and the list
+    (``src/tabs/image_gallery/ui/list/regions.py:57``) asked for it and fell back to the stamped
     English ``★ BEST``; the filmstrip did not even ask. Live report
     2026-10-22: "some badges are not translated at all".
     """

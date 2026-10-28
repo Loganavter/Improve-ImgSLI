@@ -178,3 +178,54 @@ matched_total
 _first_item_path
 # Refusal reason string literal used by the analyse path (a value, not a symbol).
 not_configured
+
+# 2026-10-28 — the public CI ran this gate for the first time (Actions were
+# billing-blocked on the private mirror), and it had been failing on tokens
+# that are NOT stale repo symbols:
+#   * product/domain prose (`BlinkTable`, `canvas_px`, `line_crispness`, …);
+#   * external libraries and OS tools the tree names in prose
+#     (`skimage`, `scipy`, `Pillow`, `GtkFileChooserDialog`, `secret-tool`);
+#   * test fixtures / session names (`secret_store_keyring`, …);
+#   * identifiers that DO exist but sit behind a re-export or a dynamic
+#     attribute (`reset_metrics_caches`, `quicklook_right_host`, …) — the
+#     checker resolves DEFINITIONS, not runtime attributes.
+# Emitted by `check_comment_citations.py --emit-allowlist`; the ratchet only
+# shrinks, so a later real staleness still fails.
+BlinkTable
+CON
+CONx
+GtkFileChooserDialog
+HelpDocumentView
+Pillow
+TextView
+UncleanShutdown
+_LinkLabel
+_content_stash
+_etc_passwd
+_get_os_default_downloads
+_keep_csd_chrome_filter_first
+canvas_px
+contribute_actions
+fallback_kept
+flagsobj
+flipY
+gallery_jev_cache
+jev_put
+judged_with_local_detector
+keyword_entry_key_release_event
+lineWidthPx
+line_crispness
+linked_child
+profile_put
+proposed_axes
+qSmartMinSize
+quicklook_right_host
+quicklook_right_scroll
+scipy
+secret_store_keyring
+secret_store_sandbox
+skimage
+test_reset_reenters_the_rebuild
+texture_fidelity
+too_small
+vlm_save
