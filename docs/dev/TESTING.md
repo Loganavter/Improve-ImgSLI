@@ -89,37 +89,37 @@ non-Python resources with no path rule print a `note:` and contribute nothing.
 | Merge / pre-merge (supervisor) | `pytest -q` (full — parallel is now the DEFAULT, `pytest.ini`) | Cross-cutting breakage lives in suites the import graph cannot see (Qt plugin/fixture discovery, session order, `slow` whole-tree scans). One parallel full run ≈ the local merge-readiness signal; CI is the async backstop. |
 | Nightly / release | `pytest -q` + `pytest -m "slow" -q` separately, and the toolkit pair | Nightly wants the unparallelized signal (order + timing flakiness) and the slow scans measured on their own; release additionally pins the sibling toolkit commit. |
 
-### 3a. The parallel default (`pytest.ini`, measured 2026-10-28)
+### 3a. The parallel mode — measured, OPT-IN, and why it is not the default
 
-`addopts` now carries `-n 4 --dist loadfile --timeout=300`, so every bare
-`pytest` in this repo is parallel: **one FILE per worker**.
+`addopts` runs the tier **serial** (one process, one order — that is what makes the
+pinned `--randomly-seed` mean something). The parallel run is a fast MODE, invoked
+explicitly:
 
-| run | measured |
-|---|---|
-`src/tabs/image_gallery/tests` serial | 196 s |
-same, `-n 4 --dist loadfile` | **56 s**, identical result set (2686 passed / 4 skipped) |
-`tests/contracts` serial | 185 s |
-same, `-n 4 --dist loadfile` | **66 s**, identical result set (3152 passed) |
+```bash
+pytest <scope> -q -n 4 --dist loadfile --timeout=300
+```
 
-Why `loadfile` and not `--dist loadgroup` (per TEST, the shape W7 first tried):
-per-test distribution ran `test_algorithms_action_issues_no_post` RED — an
-algorithms action "issued a POST" that is green in every other order. That is a
-real cross-file leak the per-test interleaving exposes, not an xdist artefact, so
-the smallest unit whose order this repo has PROVEN is the file. `--timeout=300`
-is a hang guard (a wedged Qt test used to eat the run), not a speed knob.
+Measured on this host 2026-10-28, per scope, identical result sets:
 
-Constraints worth knowing:
+| scope | serial | `-n 4 --dist loadfile` |
+|---|---|---|
+`tests/contracts` | 185 s | **66 s** |
+`src/tabs/image_gallery/tests` | 196 s | **56 s** (4/4 runs green) |
 
-- the pinned `--randomly-seed` is a **per-process** seed, so under xdist each
-  worker takes a different order. The reproducible single order is the SERIAL
-  run: `-p no:xdist` (or `-n0`) restores it for a flake hunt — that is the run to
-  quote when the question is "is this failure new?".
-- a clone cell that must pass `-o addopts=""` (no `pytest-randomly` on the system
-  interpreter) loses the parallel default too; that is deliberate — a cell's
-  acceptance stays one order.
-- `-n auto` needs `pytest-xdist` (already in `requirements-dev.txt`);
-  `pytest-timeout` is pinned there too. `QT_QPA_PLATFORM=offscreen` and
-  `PYTHONDONTWRITEBYTECODE=1` belong in every headless/agent command.
+**Why it is not the default** (corrected the same day, within the hour): the FULL
+tier under `-n 4` showed five cross-file leaks that only a multi-worker run exposes —
+`tests/devtools/test_control_discovery.py` (two pre-rename fallbacks),
+`tests/devtools/test_mcp_live_attach.py` (pre-rename data dir),
+`tests/runtime/test_stall_watch.py` (a real GUI block) and
+`tests/runtime/test_dialog_title_bar_nav.py` (Help title bar). All five are green alone
+AND green together in ONE serial process, so they are worker-state pollution of the
+same class toolkit #129 fixed, not product bugs. A gate that flakes is worse than a
+slower gate.
+
+`--dist loadgroup` (one TEST per worker) is also not usable: its dynamic scheduling
+makes the ORDER itself non-reproducible — two runs of the same pinned seed failed on
+two different tests. If the parallel mode ever becomes the default, the unit has to be
+the FILE, and the five leaks have to be fixed first.
 
 ### 4. Duration markers (unchanged by the tier table)
 
