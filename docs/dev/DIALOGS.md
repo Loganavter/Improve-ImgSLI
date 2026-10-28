@@ -19,7 +19,7 @@ Related:
 
 | Class | Path | Notes |
 |---|---|---|
-| `ExportDialog` | `src/plugins/export/dialog.py` | content-locked geometry, preview |
+| `ExportDialog` | `src/plugins/export/dialog.py` | content-locked geometry, preview; **non-modal** (`show()` + `on_finished` continuation) |
 | `SettingsDialog` | `src/plugins/settings/dialog.py` | `SidebarDialogShell` (sidebar + scroll pages) |
 | `HelpDialog` | `src/plugins/help/dialog.py` | `SidebarDialogShell` + document `Text` |
 | `ImagePropertiesDialog` | `src/plugins/image_properties/dialog.py` | document `Text` in `OverlayScrollArea` |
@@ -34,6 +34,19 @@ Modality is per-dialog: `FindActionDialog` is `NonModal` + `show()` (never
 blocks); `AppMessageDialog` uses `exec()` for alerts; child pickers opened from
 a dialog (the Export background-colour picker) are `WindowModal`, so they block
 the dialog and not the app.
+
+**The export dialog is non-modal** (`setModal(False)` +
+`setWindowModality(NonModal)`, shown with `show()`), like the video editor —
+not a style choice, a compositor one. mutter treats a *modal* transient as an
+attached dialog and redirects a move grab to its toplevel transient-for window
+(`meta_window_is_attached_dialog(window) && meta_grab_op_is_moving` →
+`grab_window = get_toplevel_transient_for(window)`, mutter 2014-05-02): dragging
+the modal export dialog dragged the main window with it. `QDialog::open()` is
+**not** a way to undo that — it force-sets `Qt::WindowModal` before showing.
+Callers therefore take the result from a `finished` handler; the host service is
+`DialogManager.show_export_dialog(..., on_finished=callback)`, which returns the
+live dialog and calls `callback(QDialog.DialogCode, options)` exactly once
+(`options == {}` unless accepted).
 
 ---
 

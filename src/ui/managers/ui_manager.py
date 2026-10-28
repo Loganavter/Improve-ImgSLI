@@ -164,9 +164,15 @@ class UIManager(QObject):
         suggested_filename: str = "",
         on_set_favorite_dir=None,
         native_size: tuple[int, int] | None = None,
+        on_finished=None,
     ):
         return self.dialogs.show_export_dialog(
-            dialog_state, preview_image, suggested_filename, on_set_favorite_dir, native_size
+            dialog_state,
+            preview_image,
+            suggested_filename,
+            on_set_favorite_dir,
+            native_size,
+            on_finished=on_finished,
         )
 
     def show_non_modal_message(self, kind, title: str, text: str):

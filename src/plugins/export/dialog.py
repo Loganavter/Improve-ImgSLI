@@ -120,6 +120,18 @@ class ExportDialog(ThemedDialog):
             | Qt.WindowType.WindowTitleHint
             | Qt.WindowType.WindowCloseButtonHint
         )
+        # Non-modal on purpose, exactly like the video editor dialog: mutter
+        # treats a *modal* transient as an attached dialog and, on a move
+        # drag, grabs the parent's frame instead of the dialog's
+        # (``meta_window_is_attached_dialog(window) && meta_grab_op_is_moving``
+        # → ``grab_window = get_toplevel_transient_for(window)``, mutter
+        # 2014-05-02). The symptom was the main window following the export
+        # dialog around the screen. The dialog is still parented to the shell
+        # (stacking/activation), but nothing here waits on it: callers
+        # continue in a ``finished`` handler (see
+        # ``DialogManager.show_export_dialog``), never after ``exec()``.
+        self.setModal(False)
+        self.setWindowModality(Qt.WindowModality.NonModal)
         self.setSizeGripEnabled(True)
         settle_on_paint(self, self._csd_settle)
 

@@ -13,6 +13,10 @@ logger = logging.getLogger(APP_LOGGER_NAME)
 class DialogManager:
     def __init__(self, host):
         self.host = host
+        # Non-modal export dialogs stay referenced here until their `finished`
+        # handler runs; a QDialog parented to the shell survives in C++, but
+        # the Python wrapper must not depend on that for an async close.
+        self._open_export_dialogs: list = []
 
     @property
     def settings_dialog(self):
@@ -258,7 +262,24 @@ class DialogManager:
         suggested_filename: str = "",
         on_set_favorite_dir=None,
         native_size: tuple[int, int] | None = None,
+        on_finished=None,
     ):
+        """Open the export dialog **non-modally** and return it.
+
+        ``on_finished(code, options)`` — when given — is called exactly once,
+        from the dialog's ``finished`` signal: ``code`` is a
+        ``QDialog.DialogCode`` and ``options`` is the dialog's export-options
+        snapshot (``{}`` unless ``code == Accepted``). Callers must continue
+        the export *inside* that callback; the dialog is ``deleteLater()``-ed
+        right after it, so the returned object is only good for wiring.
+
+        ``exec()`` used to live here, and that was the bug (owner, 2026-10-28):
+        a modal transient is an *attached dialog* for mutter, whose move grab
+        targets the transient's parent — dragging the export dialog dragged the
+        main window. Non-modal keeps the shell interactive and the drag local
+        (same shape as the video editor dialog, ``setModal(False)`` +
+        ``show()``).
+        """
         from plugins.export.dialog import ExportDialog
 
         dialog = ExportDialog(
@@ -273,4 +294,56 @@ class DialogManager:
             on_set_favorite_dir=on_set_favorite_dir,
             native_size=native_size,
         )
-        return dialog.exec(), dialog.get_export_options()
+        if on_finished is not None:
+            # The handler below is also what drops this reference, so the list
+            # only ever holds dialogs that are still waiting to report back.
+            self._bind_export_dialog_finished(dialog, on_finished)
+            self._open_export_dialogs.append(dialog)
+
+        # ``show()``, not ``open()``: QDialog::open() force-sets
+        # ``Qt::WindowModal`` before showing (Qt source, ``QDialog::open``), which
+        # is exactly the window modality that makes mutter treat this dialog as
+        # an attached dialog and grab the parent on a move. ``show()`` keeps the
+        # ``setModal(False)``/``NonModal`` declared in the dialog itself. The
+        # ``finished`` signal is emitted by ``accept()``/``reject()`` either way,
+        # so the continuation is unaffected.
+        dialog.show()
+        return dialog
+
+    def _bind_export_dialog_finished(self, dialog, on_finished) -> None:
+        """Route one ``finished`` emission to *on_finished* and drop the dialog.
+
+        Held as a closure rather than a slot so the options snapshot is taken
+        before ``deleteLater()`` and the callback cannot fire twice (a dialog
+        can emit ``finished`` once per accept/reject, and a stray second one
+        after cleanup must not re-run the export).
+        """
+        from PySide6.QtWidgets import QDialog
+
+        fired = [False]
+
+        def _handle(code) -> None:
+            if fired[0]:
+                return
+            fired[0] = True
+            try:
+                result = QDialog.DialogCode(int(code))
+            except (TypeError, ValueError):
+                result = int(code)
+            options = (
+                dialog.get_export_options()
+                if result == QDialog.DialogCode.Accepted
+                else {}
+            )
+            try:
+                on_finished(result, options)
+            except Exception:
+                logger.exception("show_export_dialog: export continuation failed")
+            finally:
+                try:
+                    self._open_export_dialogs.remove(dialog)
+                except ValueError:
+                    pass
+                dialog.deleteLater()
+
+        dialog.finished.connect(_handle)

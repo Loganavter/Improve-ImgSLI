@@ -321,8 +321,9 @@ class ImageComparePrimitivesFactory:
             text=tr("image_compare.button.save_result", language),
             variant="surface",
             parent=parent,
-            # save_result() opens the modal ExportDialog -- ripple must
-            # finish before .exec() blocks the event loop.
+            # save_result() now opens a NON-modal ExportDialog and continues in
+            # its `finished` handler, so the ripple still has to settle first
+            # (the button must not look pressed after the click).
             defer_click=DEFER_CLICK_AWAIT_RIPPLE,
         )
 
