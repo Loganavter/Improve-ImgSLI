@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import time
 import traceback
@@ -9,8 +10,11 @@ from PySide6.QtGui import QCursor, QFont
 from PySide6.QtWidgets import QApplication
 
 from core.constants import AppConstants
+from core.log_names import APP_LOGGER_NAME
 from sli_ui_toolkit.i18n import tr
 from sli_ui_toolkit.managers import DecisionJournal
+
+logger = logging.getLogger(APP_LOGGER_NAME)
 
 _INTERP_LABEL_KEYS: dict[str, str] = {
     "NEAREST": "magnifier.nearest_neighbor",
@@ -19,6 +23,42 @@ _INTERP_LABEL_KEYS: dict[str, str] = {
     "LANCZOS": "magnifier.lanczos",
     "EWA_LANCZOS": "magnifier.ewa_lanczos",
 }
+
+
+def _apply_interpolation_method(store, method: str) -> bool:
+    """Persist ``render_config.interpolation_method`` through the Dispatcher.
+
+    ``SetInterpolationMethodAction`` → ``dispatch(scope="viewport")`` →
+    ``ImageRenderConfigReducer`` is the only write that also takes the lock,
+    records undo, notifies subscribers and emits ``viewport`` (that emit
+    re-renders the loupe). The ``setattr`` fallback it replaces skipped all of
+    it (``task-transient-interp-setattr-2026-10-28``); an unappliable pick now
+    leaves the value as is and logs instead of writing in place.
+    """
+    get_dispatcher = getattr(store, "get_dispatcher", None)
+    try:
+        dispatcher = get_dispatcher() if callable(get_dispatcher) else None
+    except Exception:
+        logger.warning("interpolation: get_dispatcher() raised; %r not applied", method, exc_info=True)
+        return False
+    if dispatcher is None:
+        logger.warning("interpolation: no dispatcher; %r not applied, Store left as is", method)
+        return False
+
+    from core.state_management.appearance_actions import SetInterpolationMethodAction
+
+    last_error: BaseException | None = None
+    # Pure action: one retry costs a reducer run; a 2nd failure is a real defect.
+    for _ in range(2):
+        try:
+            dispatcher.dispatch(SetInterpolationMethodAction(method=method), scope="viewport")
+            return True
+        except Exception as exc:  # a reducer error must not take the menu down
+            last_error = exc
+    logger.error(
+        "interpolation: %r not applied after 2 dispatches: %s", method, last_error, exc_info=last_error
+    )
+    return False
 
 
 def _design_item_metrics(
@@ -241,26 +281,10 @@ class InterpolationFlyoutController:
                     if AppConstants.DEFAULT_INTERPOLATION_METHOD in method_keys
                     else method_keys[0]
                 )
-                _interp_dispatcher = getattr(host.store, "get_dispatcher", lambda: None)()
-                if _interp_dispatcher is not None:
-                    try:
-                        from core.state_management.appearance_actions import SetInterpolationMethodAction
-
-                        _interp_dispatcher.dispatch(
-                            SetInterpolationMethodAction(method=target_key), scope="viewport"
-                        )
-                    except Exception:
-                        try:
-                            setattr(host.store.viewport.render_config, "interpolation_method", target_key)
-                            host.store.emit_state_change()
-                        except Exception:
-                            pass
-                else:
-                    try:
-                        setattr(host.store.viewport.render_config, "interpolation_method", target_key)
-                        host.store.emit_state_change()
-                    except Exception:
-                        pass
+                # Repair of an out-of-map stored value (old settings file /
+                # restored session); display-only when the write cannot land
+                # -- see _apply_interpolation_method.
+                _apply_interpolation_method(host.store, target_key)
             current_index = method_keys.index(target_key) if method_keys else 0
         except (AttributeError, ValueError, IndexError):
             current_index = 0
@@ -355,35 +379,9 @@ class InterpolationFlyoutController:
                     elif getattr(controller, "sessions", None) is not None:
                         controller.sessions.on_interpolation_changed(idx)
             elif 0 <= idx < len(method_keys) and getattr(host, "store", None) is not None:
-                _fallback_method = method_keys[idx]
-                _fb_dispatcher = getattr(host.store, "get_dispatcher", lambda: None)()
-                if _fb_dispatcher is not None:
-                    try:
-                        from core.state_management.appearance_actions import SetInterpolationMethodAction
-
-                        _fb_dispatcher.dispatch(
-                            SetInterpolationMethodAction(method=_fallback_method), scope="viewport"
-                        )
-                    except Exception:
-                        try:
-                            setattr(
-                                host.store.viewport.render_config,
-                                "interpolation_method",
-                                _fallback_method,
-                            )
-                            if hasattr(host.store, "emit_state_change"):
-                                host.store.emit_state_change()
-                        except Exception:
-                            pass
-                else:
-                    try:
-                        setattr(
-                            host.store.viewport.render_config, "interpolation_method", _fallback_method
-                        )
-                        if hasattr(host.store, "emit_state_change"):
-                            host.store.emit_state_change()
-                    except Exception:
-                        pass
+                # No combo to drive (Find Action / headless host): the pick
+                # lands in the Store only through the action, never in place.
+                _apply_interpolation_method(host.store, method_keys[idx])
         finally:
             self.close()
 
