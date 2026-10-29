@@ -92,7 +92,7 @@ class RecordRecentResult:
     evicted: RecentProjectRecord | None = None
 
 
-RECENT_CAP_ISSUES_URL = "https://github.com/Loganavter/Improve-ImgSLI/issues/new"
+RECENT_CAP_ISSUES_URL = "https://github.com/Loganavter/BlinkTable/issues/new"
 
 
 def _now_iso() -> str:

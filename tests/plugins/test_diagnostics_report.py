@@ -104,7 +104,7 @@ def test_report_modules_contain_no_file_io_calls() -> None:
 def test_issue_url_is_prefilled_and_capped() -> None:
     text = "x" * 20000
     url = build_issue_url(text, title="boom", max_body=1000)
-    assert url.startswith("https://github.com/Loganavter/Improve-ImgSLI/issues/new?")
+    assert url.startswith("https://github.com/Loganavter/BlinkTable/issues/new?")
     assert "title=boom" in url
     assert len(url) < 8000
 

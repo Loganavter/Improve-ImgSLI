@@ -181,15 +181,15 @@ it and never restates the literal or the predicate.
 - **Admission / validation** → one predicate in the shared seam, called by
   every entry point. The reducer stays the correctness gate; boundary checks
   exist only for fail-fast + user messaging and must call the same predicate.
-  Reference: `shared/untested_export_resolution.py` (+ `export_warning_state.py`)
-  — one rule, one shared dialog, shared suppression state, two call sites.
+  Reference: `shared/image_processing/progressive_loader.py` (`pyvips_can_stream`)
+  — one decode-backend predicate, asked by every loader entry point.
 - **Guard / error text** → one builder + one i18n key, owned next to the rule;
   boundaries call it. Do not re-derive the wording or keep a second copy of the
   key under another namespace.
 
 **Anti-patterns**
 
-- Copying the literal into user-facing help/docs (`16384` in four help pages)
+- Copying a policy literal into a second code site or into user-facing help/docs
   instead of naming the constant.
 - Clamping at the consumer but not on save/load (`video_recording_fps`, `crf`).
 - Tests that assert each call site's copy instead of the policy — put one

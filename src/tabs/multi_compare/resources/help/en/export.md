@@ -13,7 +13,6 @@ The grid saves as a single image, and the session keeps the grid so it returns w
 - **Result** — the saved image shows the grid as it appears on screen.
 - **Crop** — each slot's crop is applied before the slots are combined.
 - **Empty slots** — slots without an image are left out of the saved image.
-- **Large exports** — if the longer side is over 16384 px, a warning asks whether to continue, because larger sizes have not been tested and the export may fail or run out of memory. **Cancel** stops the export; **Don't show again** turns the warning off for later exports.
 
 :::figure{side=block width=100%}
 ![Save grid dialog](../assets/export_save_dialog.png)

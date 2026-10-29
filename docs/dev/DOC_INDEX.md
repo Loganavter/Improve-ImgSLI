@@ -15,7 +15,7 @@ Checked by `tests/devtools/test_docs_link_graph.py`.
   Referenced by: [docs/dev/README.md](README.md)
 - **[Launcher Guide (`launcher.sh`)](../LAUNCHER.md)** — `docs/LAUNCHER.md`
   Referenced by: [docs/INSTALL.md](../INSTALL.md)
-- **[Release checklist (11.0.0 and later)](../RELEASE.md)** — `docs/RELEASE.md`
+- **[Release checklist (11.0.1 and later)](../RELEASE.md)** — `docs/RELEASE.md`
 
 ## docs/dev/
 

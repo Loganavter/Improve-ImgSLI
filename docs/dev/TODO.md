@@ -241,7 +241,6 @@ canvas-merge scope):
 - loading-toast lifecycle (~75) and pyramid-build worker (~85; parameterize
   the abort predicates);
 - export encoding tail (~55; verify live/export parity per AGENTS.md);
-- untested-resolution warning suppress helpers (~40);
 - `_img_dims` quartet inside IC (~50), `_RESAMPLE` map ×4, keyboard
   pan/zoom constants, `pixel_cache_registry.lookup` snippet ×4;
 - delete IC `_generate_unique_filepath` in favor of shared

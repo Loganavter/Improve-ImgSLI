@@ -8,7 +8,7 @@ For developer-oriented packaging/build instructions, see [CONTRIBUTING.md](../CO
 ## Quick install (recommended)
 
 ### Windows
-- Download the latest installer from the Releases: https://github.com/Loganavter/Improve-ImgSLI/releases/latest
+- Download the latest installer from the Releases: https://github.com/Loganavter/BlinkTable/releases/latest
 - Run the `.exe` and follow the steps.
 
 ### Linux (Flatpak)
@@ -23,7 +23,7 @@ yay -S improve-imgsli
 ```
 
 ### macOS
-Help wanted. If you can assist with a macOS build pipeline, please contribute: https://github.com/Loganavter/Improve-ImgSLI/pull/15
+Help wanted. If you can assist with a macOS build pipeline, please contribute: https://github.com/Loganavter/BlinkTable/pull/15
 
 ---
 
@@ -37,7 +37,7 @@ Prerequisites:
 
 Steps:
 ```bash
-git clone https://github.com/Loganavter/Improve-ImgSLI.git
+git clone https://github.com/Loganavter/BlinkTable.git
 cd Improve-ImgSLI
 chmod +x launcher.sh
 ./launcher.sh run

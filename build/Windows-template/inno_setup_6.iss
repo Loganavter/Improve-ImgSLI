@@ -5,11 +5,11 @@
 ; values are literals here — checked, not derived.
 
 #define MyAppName "BlinkTable"
-#define MyAppVersion "11.0.0"
+#define MyAppVersion "11.0.1"
 #define MyAppPublisher "Loganavter"
-#define MyAppURL "https://github.com/Loganavter/Improve-ImgSLI"
+#define MyAppURL "https://github.com/Loganavter/BlinkTable"
 #define MyAppExeName "BlinkTable.exe"
-#define MyAppSetupName "BlinkTable_Setup_v11.0.0"
+#define MyAppSetupName "BlinkTable_Setup_v11.0.1"
 
 [Setup]
 ; Fixed AppId on purpose. Without it Inno derives the AppId from AppName, so a
