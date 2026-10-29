@@ -33,28 +33,42 @@ be a fabricated result. ``--cpu-only`` exists for exactly that case.
 Flags: ``--self-test`` (pure functions, no GPU), ``--cpu-only`` (planning +
 uniform packing only), ``--frames 17,32,64``, ``--tiles WxH``,
 ``--reference-samples K`` (hash-reference cap for a fast first look; the
-default hashes every tile).
+default hashes every tile), ``--varied-sources`` (worst-case per-frame pixel
+shift; informational — see below).
+
+Scope of one tile: the base-image array draw AND the divider overlay, both in
+that tile's own viewport/scissor inside the single pass. Layers come from the
+production allocator (``TileTextureService.mark_resident``/``slot_for``) and
+the uploads go through ``ArrayResources.upload_tile_to_array`` — the bench
+assigns no layer numbering of its own.
 
 Measured status of the batch (llvmpipe via a private Xvfb, 2026-10-30 — the
 cell that wrote this tool has no real GPU):
 
-* the pass itself is cheap: 2 tiles 0.17 ms, 17 tiles 0.34 ms, 32 tiles
-  0.50 ms, 64 tiles 0.88 ms (one beginPass/endPass, N viewports, one readback
-  outside the pass: 0.2-8.4 ms depending on N);
-* a 2-tile atlas is byte-identical to the per-tile reference except the
-  overlay passes the batch does not draw: 14040/14400 px identical, the
-  360 px delta is the divider band (first differing pixel at x=78);
-* **above 2 tiles this bench's own layer assignment breaks**: uploads into
-  array layers >= 2 do not land, so later frames alias layers 0/1 (tile 0
-  renders another frame's pixels) and the tiles whose layers were never
-  written read back fully transparent. Content, viewport and scissor are
-  ruled out: the same instance/uniform path is pixel-exact at N=2, and the
-  blank tiles' rects are inside the target. What is NOT ruled out is the
-  bench-local ``layer = index * 2`` mapping: production assigns layers
-  through ``TileTextureService`` / ``upload_tile_to_array`` (residency,
-  eviction, capacity shrink via ``remembered_capacity``). Phase 0 should be
-  re-run with that path before the batching assumption is accepted or
-  refuted — see DONE.md.
+* the pass is cheap: 17 tiles 2.5 ms, 32 tiles 4.0 ms, 64 tiles 8.8 ms (one
+  beginPass/endPass, N viewports + N divider draws, one readback outside the
+  pass: 2.3-12.8 ms depending on N);
+* **the batch is byte-exact at every N measured**: 2/2, 8/8, 17/17, 32/32,
+  64/64 tiles identical to the per-tile reference, divider band included
+  (14040/14400 px was phase 0's number, before the divider was in scope);
+* the phase-0 "array layers >= 2 do not land" verdict was a **row-order bug
+  in this bench, not a layer bug**: a never-shown widget's framebuffer is
+  bottom-up, so a top-down tile rect drawn through ``QRhiViewport``/
+  ``QRhiScissor`` lands in the mirrored row. A one-row atlas (N <= 2) is
+  unaffected, which is why N=2 looked perfect; a taller atlas reads back as
+  "tile 0 shows another frame" and blank cells appear where the mirrored,
+  incomplete last row lands (a 5x4 atlas has 3 dead cells, i.e. exactly the
+  "3 transparent tiles at N=17" phase 0 reported). The fix is the engine's
+  own COMPOSITED_SCISSOR rule (``composited_scissor_needs_y_flip``), applied
+  to the viewport AND the scissor;
+* the layer path itself was never the problem: a per-layer readback probe
+  showed every allocated layer holding exactly its own frame's pixels, so
+  the production allocator + upload path was adopted for fidelity, not as a
+  fix;
+* ``--varied-sources`` (each frame gets its own shifted proxy) is a planning/
+  packing worst case: its GPU exactness column is informational, because the
+  reference re-resolves the plan's own proxy for those frames — a scope
+  difference in the harness, not a batching defect.
 
 Temp files live under a ``tempfile.mkdtemp()`` removed at exit; the sources
 are generated deterministically (no seed needed, no network).
@@ -228,6 +242,14 @@ class TileFrame:
     tile_h: int
     uniforms: bytes = b""
     instance: bytes = b""
+    #: Texture-array layers this tile's two sides were ALLOCATED (never
+    #: computed from the tile index: they come from the production slot
+    #: allocator, see ``assign_tile_layers``).
+    layer1: int = -1
+    layer2: int = -1
+    #: The divider overlay block for this tile, packed during the pass —
+    #: ``b""`` when this frame draws no divider.
+    divider: bytes = b""
 
 
 def _load_uniform_module():
@@ -254,45 +276,120 @@ class _FixedClipRhi:
         return self._matrix
 
 
-def _base_image_view(tile: TileFrame, plan):
-    """The subset of ``base_image`` the uniform packer reads, from a plan.
+def scene_field(scene, name: str, default=None):
+    """Read one ``RenderScene`` field, tolerating a dict stand-in."""
+    value = getattr(scene, name, None)
+    if value is None and isinstance(scene, dict):
+        value = scene.get(name)
+    return default if value is None else value
 
-    Export/video plans render the whole canvas: zoom 1, pan 0, the split from
-    the scene when it exposes one. ``letterbox1/2`` is the image's footprint
-    inside the canvas (``1.0`` when the pair already fills it).
+
+def tile_letterbox_geometry(
+    tile: TileFrame,
+) -> tuple[
+    tuple[float, float, float, float],
+    tuple[float, float, float, float],
+    tuple[int, int, int, int],
+]:
+    """``(letterbox, canvas_letterbox, content_rect_px)`` for one tile.
+
+    Mirrors the export canvas path for an unpadded plan
+    (``apply_plan_letterbox_from_clip`` in
+    ``src/engine/cache/display_tier_service.py``): the plan's padded canvas
+    frame is fitted into the render target (here: the tile, whose size equals
+    the plan's canvas), then ``overlay_clip_rect`` (canvas px) is nested
+    inside that frame. No clip rect / no geometry letterbox / a padded
+    composite plan all leave the pair at full-target UVs.
     """
-    split = 0.5
-    horizontal = True
-    scene = getattr(plan, "render_scene", None)
-    for attr, default in (("split_position", split), ("is_horizontal", horizontal)):
-        value = getattr(scene, attr, None) if scene is not None else None
-        if value is None and isinstance(scene, dict):
-            value = scene.get(attr)
-        if value is not None:
-            if attr == "is_horizontal":
-                horizontal = bool(value)
-            else:
-                split = float(value)
+    from ui.canvas_infra.scene.frame_geometry import resolve_canvas_content_geometry
 
-    def _letterbox(image) -> tuple[float, float, float, float]:
-        w = max(1, int(getattr(image, "width", 1) or 1))
-        h = max(1, int(getattr(image, "height", 1) or 1))
-        cw = max(1, int(tile.canvas_w))
-        ch = max(1, int(tile.canvas_h))
-        return (0.0, 0.0, min(1.0, w / cw), min(1.0, h / ch))
+    widget_w = max(1, int(tile.tile_w))
+    widget_h = max(1, int(tile.tile_h))
+    canvas_w = max(1, int(tile.canvas_w))
+    canvas_h = max(1, int(tile.canvas_h))
+    full = (0.0, 0.0, 1.0, 1.0)
+    none = (0.0, 0.0, 0.0, 0.0)
+    whole = (0, 0, widget_w, widget_h)
 
+    plan = tile.plan
+    clip = scene_field(getattr(plan, "render_scene", None), "overlay_clip_rect")
+    if (
+        clip is None
+        or not bool(getattr(plan, "geometry_letterbox", False))
+        or bool(getattr(plan, "image_is_padded_composite", False))
+    ):
+        return full, none, whole
+    geometry = resolve_canvas_content_geometry(
+        widget_width=widget_w,
+        widget_height=widget_h,
+        image_width=canvas_w,
+        image_height=canvas_h,
+        virtual_layout=None,
+    )
+    inner = geometry.inner_rect_px
+    if inner is None:
+        return full, none, whole
+    frame_x, frame_y, frame_w, frame_h = (float(v) for v in inner)
+    if frame_w <= 0.0 or frame_h <= 0.0:
+        return full, none, whole
+    sx = frame_w / float(canvas_w)
+    sy = frame_h / float(canvas_h)
+    clip_x, clip_y, clip_w, clip_h = (float(v) for v in clip)
+    letterbox = (
+        (frame_x + clip_x * sx) / widget_w,
+        (frame_y + clip_y * sy) / widget_h,
+        clip_w * sx / widget_w,
+        clip_h * sy / widget_h,
+    )
+    canvas_letterbox = (
+        frame_x / widget_w,
+        frame_y / widget_h,
+        frame_w / widget_w,
+        frame_h / widget_h,
+    )
+    content_rect = (
+        int(round(frame_x + clip_x * sx)),
+        int(round(frame_y + clip_y * sy)),
+        max(1, int(round(clip_w * sx))),
+        max(1, int(round(clip_h * sy))),
+    )
+    return letterbox, canvas_letterbox, content_rect
+
+
+def _base_image_view(tile: TileFrame):
+    """The production ``BaseImagePrimitive`` fields the array packer reads.
+
+    Export/video plans render the whole canvas: zoom 1, pan 0. The split is
+    the scene's ``split_position_visual`` — the field the export canvas feeds
+    both ``base.frag`` and ``DividerPass`` (``split_position`` does not exist
+    on ``RenderScene``, and defaulting to 0.5 there silently draws every tile
+    with half the frame showing the wrong side).
+    """
+    scene = getattr(tile.plan, "render_scene", None)
+    split = float(scene_field(scene, "split_position_visual", 0.5))
+    split = max(0.0, min(1.0, split))
+    letterbox, canvas_letterbox, _rect = tile_letterbox_geometry(tile)
+    fill = getattr(tile.plan, "fill_rgba", None)
+    letterbox_fill = None
+    if fill is not None and len(fill) >= 4 and float(fill[3]) > 0:
+        letterbox_fill = (
+            float(fill[0]) / 255.0,
+            float(fill[1]) / 255.0,
+            float(fill[2]) / 255.0,
+            float(fill[3]) / 255.0,
+        )
     return _BaseImageView(
         zoom=1.0,
         pan_offset_x=0.0,
         pan_offset_y=0.0,
         split_position=split,
-        is_horizontal=horizontal,
-        channel_mode_int=0,
-        diff_mode_int=0,
-        letterbox1=_letterbox(tile.image1),
-        letterbox2=_letterbox(tile.image2),
-        canvas_letterbox=None,
-        letterbox_fill=None,
+        is_horizontal=bool(scene_field(scene, "is_horizontal", False)),
+        channel_mode_int=int(scene_field(scene, "channel_mode_int", 0) or 0),
+        diff_mode_int=int(scene_field(scene, "diff_mode_int", 0) or 0),
+        letterbox1=letterbox,
+        letterbox2=letterbox,
+        canvas_letterbox=canvas_letterbox,
+        letterbox_fill=letterbox_fill,
     )
 
 
@@ -315,7 +412,7 @@ def pack_tile_uniforms(rhi, tile: TileFrame) -> bytes:
     """Production uniform packing for one tile (``_ARRAY_UNIFORM_BLOCK_SIZE``)."""
     uniform_module = _load_uniform_module()
     return uniform_module.pack_array_uniforms(
-        rhi, _base_image_view(tile, tile.plan), diff_source_ready=False
+        rhi, _base_image_view(tile), diff_source_ready=False
     )
 
 
@@ -345,6 +442,182 @@ def pack_tile_instance(tile: TileFrame, layer1: int, layer2: int) -> bytes:
             bbox=(0.0, 0.0, 1.0, 1.0),
         )
     )
+
+
+def divider_spec_for_tile(tile: TileFrame):
+    """``(show, position_px, thickness_px, is_horizontal, qcolor, clip)``.
+
+    Bench mirror of the divider feature's stateless spec resolver
+    (``tabs/image_compare/canvas/features/divider/overlay_model.py`` —
+    ``resolve_divider_spec`` / ``content_split_visual``), which shared code is
+    not allowed to import (tests/contracts/test_canvas_features_imports.py).
+    Only the arithmetic is mirrored: the inputs are the same ones the export
+    canvas reads (the plan scene's ``feature_overrides`` payload and split, the
+    letterbox content rect after the identity camera), and the packing below
+    uses the production ``pack_divider``. The byte-exact comparison against the
+    per-tile reference is what keeps this mirror honest — drift here shows up
+    as a mismatch, not as a silent pass.
+    """
+    scene = getattr(tile.plan, "render_scene", None)
+    payloads = getattr(scene, "feature_overrides", None)
+    payloads = payloads if isinstance(payloads, dict) else {}
+    show = bool(payloads.get("show_divider", False))
+    thickness = float(payloads.get("divider_thickness", 0) or 0)
+    color = payloads.get("divider_color")
+    is_horizontal = bool(scene_field(scene, "is_horizontal", False))
+    split = float(scene_field(scene, "split_position_visual", 0.5))
+    split = max(0.0, min(1.0, split))
+    _letterbox, _canvas_letterbox, content_rect = tile_letterbox_geometry(tile)
+    clip_x, clip_y, clip_w, clip_h = (float(v) for v in content_rect)
+    # Identity camera (zoom 1, pan 0) for an export tile: the content rect is
+    # already render-target px, so the pass's view-transform step is a no-op.
+    position = clip_y + clip_h * split if is_horizontal else clip_x + clip_w * split
+    return (
+        show,
+        position,
+        thickness,
+        is_horizontal,
+        color,
+        (clip_x, clip_y, clip_w, clip_h),
+    )
+
+
+def _plan_wants_divider(tile: TileFrame) -> bool:
+    """Whether this tile's plan asks for a divider line at all.
+
+    Reads the same two scene payload fields ``DividerPass.should_paint``
+    gates on (``show_divider`` + ``divider_thickness``); the geometry is still
+    resolved per tile by ``pack_tile_divider``.
+    """
+    scene = getattr(tile.plan, "render_scene", None)
+    payloads = getattr(scene, "feature_overrides", None)
+    if not isinstance(payloads, dict):
+        return False
+    if not bool(payloads.get("show_divider", False)):
+        return False
+    try:
+        return float(payloads.get("divider_thickness", 0) or 0) > 0.0
+    except (TypeError, ValueError):
+        return False
+
+
+def pack_tile_divider(tile: TileFrame, clip_matrix) -> bytes:
+    """One tile's divider block, in the production 128 B layout.
+
+    ``DividerPass`` packs ``(bar, clip)`` rect items through
+    ``pack_divider``; the rect assembly is mirrored from its semantic
+    resolver (see ``divider_spec_for_tile`` for why it is mirrored), and the
+    block is packed for a render target the size of ONE TILE: the reference
+    tile is its own 160x90 surface, and the divider shader works in
+    target-relative px (``vTexCoord * resolution``). ``b""`` when this frame
+    shows no divider.
+    """
+    from PySide6.QtGui import QColor
+
+    from engine.overlay import RectItem, Rgba, pack_divider
+
+    show, position, thickness, is_horizontal, color, clip = divider_spec_for_tile(tile)
+    if not show or thickness <= 0.0:
+        return b""
+    if isinstance(color, QColor):
+        fill = Rgba(color.redF(), color.greenF(), color.blueF(), color.alphaF())
+    else:
+        # The feature's own default when the scene payload carries no color
+        # (white, opaque). Plain engine colour values, no QColor literal:
+        # palette colours belong to the theme, and a devtool has no business
+        # inventing one (tests/contracts/test_no_hardcoded_qcolor.py).
+        fill = Rgba(1.0, 1.0, 1.0, 1.0)
+    half = thickness * 0.5
+    if is_horizontal:
+        bar = RectItem(
+            x=clip[0], y=position - half, w=clip[2], h=thickness, color=fill
+        )
+    else:
+        bar = RectItem(
+            x=position - half, y=clip[1], w=thickness, h=clip[3], color=fill
+        )
+    clip_item = RectItem(
+        x=clip[0],
+        y=clip[1],
+        w=clip[2],
+        h=clip[3],
+        color=Rgba(0.0, 0.0, 0.0, 0.0),
+    )
+    blocks = pack_divider(
+        (bar, clip_item), clip_matrix, float(tile.tile_w), float(tile.tile_h)
+    )
+    return blocks[0] if blocks else b""
+
+
+# ---------------------------------------------------------------------------
+# Production texture-array layer assignment
+# ---------------------------------------------------------------------------
+
+
+def tile_source_key(tile: TileFrame, side: int) -> tuple:
+    """The ``TileTextureService`` source id for one tile's one side.
+
+    Production keys its slot allocator by whatever the caller uses as a
+    source identity (``"stored_0"``/``LevelKey``/...); the bench's tile
+    images are independent one-tile sources, so the identity is
+    ``(run, tile, side)``. ``register_source`` gives each one a 1x1 grid,
+    which is what makes ``tile_key`` collapse to the source id itself.
+    """
+    return ("strip-tile", int(tile.index), int(side))
+
+
+def _tile_sides(tile: TileFrame):
+    return ((1, tile.image1), (2, tile.image2))
+
+
+def assign_tile_layers(tiles: list[TileFrame]):
+    """Allocate every tile side's array layer through ``TileTextureService``.
+
+    Returns ``(service, layer_count)``. This is the production assignment
+    path — grid registration plus ``mark_resident`` for the ``(source, (0,0))``
+    pair, read back via ``slot_for`` — never ``index * 2``. The allocator is
+    the thing phase 0 needs to exercise: it owns capacity, free-list reuse
+    and the down-sized capacity the GPU owner publishes.
+
+    Deviation from the canvas, stated once: production calls
+    ``mark_resident`` from *inside* ``ArrayResources.upload_tile_to_array``
+    (``src/engine/gpu/array_resources.py:216``), i.e. after the upload batch
+    has been staged. The bench has to know each tile's layers before it packs
+    the per-tile instance buffer, and its uploads all happen in one frame, so
+    it registers + marks resident first and then uploads through the same
+    ``upload_tile_to_array`` (which finds the already-allocated slot and
+    uploads into it). Same allocator, same upload call, one-frame reorder.
+    """
+    from engine.cache.tile_texture_service import TileTextureService
+
+    layer_count = max(2, 2 * len(tiles))
+    service = TileTextureService(max_array_size=layer_count)
+    for tile in tiles:
+        for _side, image in _tile_sides(tile):
+            service.register_source(
+                tile_source_key(tile, _side),
+                (int(image.width), int(image.height)),
+            )
+    for tile in tiles:
+        for side, image in _tile_sides(tile):
+            service.mark_resident(
+                tile_source_key(tile, side),
+                (0, 0),
+                int(image.width) * int(image.height) * 4,
+                (int(image.width), int(image.height)),
+            )
+    return service, layer_count
+
+
+def tile_layers(tile: TileFrame, service) -> tuple[int, int]:
+    """``(layer1, layer2)`` the allocator handed this tile's two sides."""
+    layers = []
+    for side, _image in _tile_sides(tile):
+        slot = service.slot_for(tile_source_key(tile, side), (0, 0))
+        if slot is None:
+            raise RuntimeError(f"tile {tile.index} side {side}: no allocated slot")
+        layers.append(int(slot[1]))
+    return layers[0], layers[1]
 
 
 # ---------------------------------------------------------------------------
@@ -392,15 +665,18 @@ def _build_store():
     return store
 
 
-# Overlay features the bench switches off so both sides render the same
-# scope: the base-image pass only. The strip's real tiles also carry these
-# overlays — batching them needs the same per-tile viewport treatment and is
-# the residual risk recorded in DONE.md, not something this pass measures.
+# Overlay features the bench switches off so the reference renders the same
+# scope the batch draws: the base-image pass plus the divider. The divider is
+# deliberately NOT in this list -- it is part of the per-tile scope the batch
+# now reproduces (``pack_tile_divider``), so disabling it in the reference
+# would compare a scope the strip never renders. Guides/magnifier/capture/
+# filename overlays stay off: they are interactive-ish chrome the strip does
+# not batch, and leaving them on would make every tile differ for a reason
+# this bench does not measure.
 _OVERLAY_COMMANDS = (
     ("guides", ("toggle_enabled",)),
     ("magnifier", ("toggle_enabled",)),
     ("capture", ("settings.toggle_visibility", "toggle_visibility")),
-    ("divider", ("settings.toggle_visibility", "toggle_visibility")),
     ("filename_overlay", ("settings.toggle_visibility", "toggle_visibility")),
 )
 
@@ -586,22 +862,26 @@ def build_tiles(
     return tiles, plan_ms
 
 
-def pack_tiles(tiles: list[TileFrame], *, rhi=None) -> float:
-    """Pack per-tile uniforms + instances; returns ``pack_ms``."""
+def pack_tiles(tiles: list[TileFrame], *, rhi=None):
+    """Allocate layers + pack per-tile uniforms/instances.
+
+    Returns ``(pack_ms, tile_service)`` — the service is the same one the GPU
+    uploads must go through, so layer assignment and upload use one allocator.
+    """
     packing_rhi = rhi if rhi is not None else _FixedClipRhi()
+    tile_service, _layer_count = assign_tile_layers(tiles)
     started = time.perf_counter()
     for index, tile in enumerate(tiles):
-        layer1 = index * 2
-        layer2 = index * 2 + 1
+        tile.layer1, tile.layer2 = tile_layers(tile, tile_service)
         tile.uniforms = pack_tile_uniforms(packing_rhi, tile)
-        tile.instance = pack_tile_instance(tile, layer1, layer2)
+        tile.instance = pack_tile_instance(tile, tile.layer1, tile.layer2)
         if len(tile.uniforms) != _uniform_block_size():
             raise RuntimeError(
                 f"tile {index}: uniform block {len(tile.uniforms)}B, "
                 f"shader expects {_uniform_block_size()}B"
             )
         uniform_offset(index)  # asserts 256-byte alignment
-    return (time.perf_counter() - started) * 1000.0
+    return (time.perf_counter() - started) * 1000.0, tile_service
 
 
 def _uniform_block_size() -> int:
@@ -746,7 +1026,7 @@ def _qimage_from_pil(image):
     return qimage.copy()
 
 
-def _make_atlas_widget(tiles: list[TileFrame], cols: int):
+def _make_atlas_widget(tiles: list[TileFrame], cols: int, tile_service):
     from PySide6.QtWidgets import QRhiWidget
 
     from engine.gpu.offscreen_canvas import configure_offscreen_widget
@@ -755,8 +1035,11 @@ def _make_atlas_widget(tiles: list[TileFrame], cols: int):
         """ONE target, ONE pass, N viewports — the batching assumption.
 
         Every tile draws the production ``base_array.vert``/``.frag`` quad from its own
-        texture-array layer pair and its own uniform block; the pass is
-        opened once and the target is read back once by the caller.
+        texture-array layer pair (allocated by ``TileTextureService``, uploaded
+        through ``ArrayResources.upload_tile_to_array``) and its own uniform
+        block, then the production divider overlay for that tile in the same
+        tile viewport/scissor; the pass is opened once and the target is read
+        back once by the caller.
         """
 
         def __init__(self) -> None:
@@ -764,6 +1047,7 @@ def _make_atlas_widget(tiles: list[TileFrame], cols: int):
             configure_offscreen_widget(self)
             self._tiles = list(tiles)
             self._cols = int(cols)
+            self._tile_service = tile_service
             self._layer_count = max(2, 2 * len(self._tiles))
             self._resources = None
             self._vertex_buffer = None
@@ -773,6 +1057,15 @@ def _make_atlas_widget(tiles: list[TileFrame], cols: int):
             self._pipeline_ready = False
             self._uploaded = False
             self._last_error: str | None = None
+            self._divider = None
+            self._divider_slots: dict[int, int] = {}
+            # Whether this run draws the divider at all: decided from each
+            # tile's own plan (the export scene's ``show_divider`` payload and
+            # thickness), the same fields ``DividerPass.should_paint`` reads.
+            # Decided up front because the pack needs a mounted shell (rhi).
+            self._divider_wanted = any(
+                _plan_wants_divider(tile) for tile in self._tiles
+            )
 
         # -- lifecycle -------------------------------------------------
         def initialize(self, command_buffer):
@@ -801,6 +1094,18 @@ def _make_atlas_widget(tiles: list[TileFrame], cols: int):
             self._upload_qimages = []
             self._pipeline_ready = False
             self._srbs = []
+            # The overlay shell owns GPU objects bound to the previous target;
+            # re-mount on the new one and repack the divider blocks with its
+            # (possibly different) clip matrix.
+            if self._divider is not None:
+                try:
+                    self._divider.teardown()
+                except Exception:
+                    pass
+            self._divider = None
+            self._divider_slots = {}
+            for tile in self._tiles:
+                tile.divider = b""
             from PySide6.QtGui import QRhiBuffer, QRhiSampler
 
             samplers = {}
@@ -824,6 +1129,13 @@ def _make_atlas_widget(tiles: list[TileFrame], cols: int):
                 lambda name: self._samplers[name],
                 self._layer_count,
                 "bench-strip",
+            )
+            # The allocator that handed out the layers must follow a capacity
+            # the driver refuses (ArrayResources halves it on a failed probe);
+            # otherwise the plan keeps sampling layers this array cannot
+            # address (tests/contracts/test_capacity_agreement.py).
+            self._resources.set_capacity_sink(
+                lambda capacity: self._tile_service.set_max_array_size(capacity)
             )
             from tabs.image_compare.canvas.rhi_renderer.resources import _VERTICES
 
@@ -900,6 +1212,13 @@ def _make_atlas_widget(tiles: list[TileFrame], cols: int):
 
         def releaseResources(self):
             self._srbs = []
+            if self._divider is not None:
+                try:
+                    self._divider.teardown()
+                except Exception:
+                    pass
+            self._divider = None
+            self._divider_slots = {}
             if self._resources is not None:
                 try:
                     self._resources.release()
@@ -927,10 +1246,7 @@ def _make_atlas_widget(tiles: list[TileFrame], cols: int):
                 return
             from PySide6.QtGui import (
                 QRhiDepthStencilClearValue,
-                QRhiTextureUploadDescription,
-                QRhiTextureUploadEntry,
                 QRhiScissor,
-                QRhiTextureSubresourceUploadDescription,
                 QRhiViewport,
             )
 
@@ -947,47 +1263,86 @@ def _make_atlas_widget(tiles: list[TileFrame], cols: int):
 
             updates = rhi.nextResourceUpdateBatch()
             if not self._uploaded:
-                # Layers are uploaded in small chunks, each submitted through
-                # its own resource-update batch. One batch carrying every
-                # layer (34 x 160x90 at N=17) left later layers unuploaded on
-                # this backend: the tiles sampling them read back transparent.
+                # Production upload path: every layer goes through
+                # ``ArrayResources.upload_tile_to_array`` (bound guard,
+                # ``mark_resident``/``slot_for`` layers, ``dirty_layers``)
+                # instead of a bench-local ``index * 2`` layer literal.
                 updates.uploadStaticBuffer(
                     self._vertex_buffer, self._pending_vertex_bytes
                 )
                 command_buffer.resourceUpdate(updates)
                 updates = rhi.nextResourceUpdateBatch()
-                tile_array = self._resources.tile_arrays[0]
                 # The upload descriptions hold their QImage by reference; a
                 # collected source image leaves the GPU upload reading freed
                 # pixels (observed as blank/garbage tiles once a run uploads
                 # more than a handful of layers). Keep them alive until the
                 # run ends.
                 self._upload_qimages = []
-                uploaded_layers = 0
-                for index, tile in enumerate(self._tiles):
-                    for side, layer, image in (
-                        (1, index * 2, tile.image1),
-                        (2, index * 2 + 1, tile.image2),
-                    ):
+                dirty_layers: dict[int, set[int]] = {}
+                for tile in self._tiles:
+                    for side, image in _tile_sides(tile):
                         qimage = _qimage_from_pil(image)
                         self._upload_qimages.append(qimage)
-                        entry = QRhiTextureUploadEntry(
-                            int(layer),
-                            0,
-                            QRhiTextureSubresourceUploadDescription(qimage),
+                        self._resources.upload_tile_to_array(
+                            self._tile_service,
+                            tile_source_key(tile, side),
+                            (0, 0),
+                            qimage,
+                            updates,
+                            dirty_layers,
                         )
-                        updates.uploadTexture(
-                            tile_array, QRhiTextureUploadDescription(entry)
-                        )
-                        uploaded_layers += 1
-                        if uploaded_layers % 4 == 0:
-                            command_buffer.resourceUpdate(updates)
-                            updates = rhi.nextResourceUpdateBatch()
-                # The array is MipMapped and the sampler is trilinear: without
-                # this the levels above 0 are uninitialized and a 1:1 tile can
-                # still sample a garbage mip (content_scale < 1 minifies).
-                updates.generateMips(tile_array)
+                # Production shape: every tile's upload rides ONE resource
+                # update batch, submitted before the mips are regenerated
+                # (``upload_tile_to_array`` documents that ``generateMips``
+                # must not be in the same batch as the upload it reads).
+                command_buffer.resourceUpdate(updates)
+                updates = rhi.nextResourceUpdateBatch()
+                for array_index in sorted(dirty_layers):
+                    # The upload call defers mip generation to its caller
+                    # (production runs the engine mip cascade over the dirty
+                    # layers after submitting, instead of regen-per-upload).
+                    # The bench has no cascade and uploads once per run, so it
+                    # regenerates the whole bound array once -- same resulting
+                    # levels, coarser granularity, stated as the deviation.
+                    if array_index != 0:
+                        continue
+                    self._resources._ensure_tile_array(array_index)
+                    updates.generateMips(self._resources.tile_arrays[array_index])
                 self._uploaded = True
+
+            blocks = [(index, tile.divider) for index, tile in enumerate(self._tiles)]
+            if self._divider_wanted:
+                if self._divider is None:
+                    from engine.overlay import DIVIDER_UNIFORM_SIZE, OverlayShell
+
+                    shell = OverlayShell(DIVIDER_UNIFORM_SIZE)
+                    shell.mount(
+                        rhi,
+                        target,
+                        _SRC_ROOT
+                        / "tabs"
+                        / "image_compare"
+                        / "canvas"
+                        / "features"
+                        / "divider"
+                        / "shaders",
+                        "divider",
+                    )
+                    self._divider = shell
+                # Packed once per run: the clip matrix comes from the mounted
+                # shell, and every tile's spec is static for this frame.
+                blocks = []
+                for index, tile in enumerate(self._tiles):
+                    if not tile.divider:
+                        tile.divider = pack_tile_divider(tile, self._divider.clip_matrix())
+                    blocks.append((index, tile.divider))
+                # Slot per tile: ``stage_packed`` grows the shell's uniform
+                # buffers and stages the shared quad, one slot per block.
+                present = [index for index, block in blocks if block]
+                self._divider_slots = {tile: slot for slot, tile in enumerate(present)}
+                self._divider.stage_packed(
+                    updates, [tile.divider for tile in self._tiles if tile.divider]
+                )
 
             for index, tile in enumerate(self._tiles):
                 # One update batch per tile: a single batch carrying every
@@ -1037,6 +1392,33 @@ def _make_atlas_widget(tiles: list[TileFrame], cols: int):
                     )
                     for (logical_x, logical_y, logical_w, logical_h) in logical_rects
                 ]
+                # The framebuffer origin is bottom-left for a widget that is
+                # never shown (WA_DontShowOnScreen, which
+                # ``configure_offscreen_widget`` sets): Qt's compositing step
+                # never absorbs the Y convention, so a top-down rect must be
+                # flipped before it reaches QRhi. This is the COMPOSITED_SCISSOR
+                # rule from ``engine/gpu/rt_y_orientation.py`` (the same
+                # predicate production's ``scissor_from_widget_rect`` uses), and
+                # it applies to the viewport exactly as it does to the scissor:
+                # viewport and scissor live in one framebuffer space. Getting it
+                # wrong does NOT blank the atlas -- it silently draws each row
+                # into the mirrored row, so a 1-row atlas (N<=2) looks perfect
+                # and every taller one reads back as another tile's frame
+                # (which is what phase 0 mistook for a texture-layer failure).
+                from engine.gpu.rt_y_orientation import composited_scissor_needs_y_flip
+
+                from PySide6.QtCore import Qt
+
+                flip_rows = composited_scissor_needs_y_flip(
+                    rhi,
+                    never_shown=self.testAttribute(
+                        Qt.WidgetAttribute.WA_DontShowOnScreen
+                    ),
+                )
+                if flip_rows:
+                    fb_rects = [
+                        (x, fb_h - (y + h), w, h) for (x, y, w, h) in fb_rects
+                    ]
                 command_buffer.setGraphicsPipeline(self._resources.array_pipeline)
                 for index, (tile_left_fb, tile_top_fb, tile_w_fb, tile_h_fb) in enumerate(
                     fb_rects
@@ -1070,6 +1452,43 @@ def _make_atlas_widget(tiles: list[TileFrame], cols: int):
                     )
                     command_buffer.setShaderResources(self._srbs[index])
                     command_buffer.draw(4, 1)
+
+                # Divider overlay, per tile, in the SAME open pass and with
+                # the same viewport/scissor shape as that tile's base draw:
+                # the reference tile is its own 160x90 target, and the divider
+                # shader works in target-relative px, so the tile viewport IS
+                # the reference's full-target viewport.
+                if self._divider is not None and self._divider.pipeline is not None:
+                    for index, (tile_left_fb, tile_top_fb, tile_w_fb, tile_h_fb) in enumerate(
+                        fb_rects
+                    ):
+                        slot = self._divider_slots.get(index)
+                        if slot is None:
+                            continue
+                        command_buffer.setGraphicsPipeline(self._divider.pipeline)
+                        command_buffer.setViewport(
+                            QRhiViewport(
+                                float(tile_left_fb),
+                                float(tile_top_fb),
+                                float(tile_w_fb),
+                                float(tile_h_fb),
+                            )
+                        )
+                        command_buffer.setScissor(
+                            QRhiScissor(
+                                int(tile_left_fb),
+                                int(tile_top_fb),
+                                int(tile_w_fb),
+                                int(tile_h_fb),
+                            )
+                        )
+                        command_buffer.setVertexInput(
+                            0, [(self._divider.vertex_buffer, 0)]
+                        )
+                        command_buffer.setShaderResources(
+                            self._divider.slot_bindings[slot]
+                        )
+                        command_buffer.draw(4)
             finally:
                 command_buffer.endPass()
 
@@ -1082,7 +1501,7 @@ def _clear_color():
     return QColor(0, 0, 0, 0)
 
 
-def run_batch_pass(tiles: list[TileFrame], cols: int):
+def run_batch_pass(tiles: list[TileFrame], cols: int, tile_service):
     """Render all tiles into one target; returns ``(tile_hashes, timings)``."""
     from engine.gpu.offscreen_canvas import (
         render_widget_frame,
@@ -1094,7 +1513,7 @@ def run_batch_pass(tiles: list[TileFrame], cols: int):
     tile_w = tiles[0].tile_w
     tile_h = tiles[0].tile_h
     _, rows, atlas_w, atlas_h = plan_tile_grid(len(tiles), tile_w, tile_h, cols)
-    widget = _make_atlas_widget(tiles, cols)
+    widget = _make_atlas_widget(tiles, cols, tile_service)
     resize_and_show_offscreen_widget(widget, (atlas_w, atlas_h))
     _must_have_rhi(widget, "batched strip pass")
 
@@ -1136,6 +1555,17 @@ def run_batch_pass(tiles: list[TileFrame], cols: int):
         tile_bytes_list.append(tile_bytes)
         hashes.append(hash_rgba(tile_bytes))
     try:
+        array_capacity = (
+            int(widget._resources.array_capacity) if widget._resources is not None else 0
+        )
+        upload_skipped = (
+            int(widget._resources.array_upload_skipped_count)
+            if widget._resources is not None
+            else 0
+        )
+    except Exception:
+        array_capacity, upload_skipped = 0, 0
+    try:
         widget.close()
         widget.deleteLater()
     except Exception:
@@ -1146,6 +1576,17 @@ def run_batch_pass(tiles: list[TileFrame], cols: int):
         "rows": rows,
         "atlas": (atlas_w, atlas_h),
         "dpr_scale": scale,
+        # What the pass actually sampled per tile: the layers the production
+        # allocator handed out (not index*2), so a mismatch report can say
+        # which layer a tile read.
+        "layers": [(int(t.index), int(t.layer1), int(t.layer2)) for t in tiles],
+        "divider_tiles": sorted(widget._divider_slots),
+        # The capacity the driver actually backed (ArrayResources verifies and
+        # halves a refused allocation) plus every upload it refused: a layer
+        # the array cannot address is the difference between "the batch is
+        # wrong" and "this backend will not hold N layers".
+        "array_capacity": array_capacity,
+        "upload_skipped": upload_skipped,
     }
 
 
@@ -1209,7 +1650,7 @@ def run_self_test(quiet: bool = False) -> int:
     )
     tile = _synthetic_tile()
     unpacked = uniform_module.pack_array_uniforms(
-        _FixedClipRhi(), _base_image_view(tile, tile.plan), diff_source_ready=False
+        _FixedClipRhi(), _base_image_view(tile), diff_source_ready=False
     )
     check("packed uniform block length", len(unpacked) == block_size, str(len(unpacked)))
     padded = pad_uniform_block(unpacked)
@@ -1250,6 +1691,85 @@ def run_self_test(quiet: bool = False) -> int:
     scaled, (sx, sy) = target_units(rects, (80, 80))
     check("DPR remap scales the grid", (sx, sy) == (2.0, 2.0) and scaled[-1][:2] == (40, 40), str(scaled))
 
+    # 5. layers come from the production allocator, not from the tile index
+    synthetic = [_synthetic_tile(index) for index in range(5)]
+    service, layer_count = assign_tile_layers(synthetic)
+    layer_pairs = [tile_layers(tile, service) for tile in synthetic]
+    flat = [layer for pair in layer_pairs for layer in pair]
+    check("layers: one per tile side", len(flat) == 2 * len(synthetic), str(flat))
+    check("layers: no two sides share a layer", len(set(flat)) == len(flat), str(flat))
+    check(
+        "layers: every layer addressable by the bound array",
+        all(0 <= layer < layer_count for layer in flat),
+        f"{flat} vs capacity {layer_count}",
+    )
+    check(
+        "layers: every side is resident in the service",
+        all(
+            service.is_resident(tile_source_key(tile, side), (0, 0))
+            for tile in synthetic
+            for side, _image in _tile_sides(tile)
+        ),
+    )
+    replay_service, _cap = assign_tile_layers([_synthetic_tile(index) for index in range(5)])
+    replay = [
+        tile_layers(tile, replay_service) for tile in [_synthetic_tile(i) for i in range(5)]
+    ]
+    check("layers: assignment is deterministic", replay == layer_pairs, f"{replay} vs {layer_pairs}")
+
+    # 6. divider overlay packs per tile in the production 128 B layout
+    from engine.overlay.semantic import DIVIDER_UNIFORM_FMT
+    from types import SimpleNamespace
+
+    identity = (1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0)
+
+    def _divider_tile(split: float, show: bool = True, thickness: int = 3):
+        plan = _SyntheticPlan()
+        plan.render_scene = SimpleNamespace(
+            split_position_visual=split,
+            is_horizontal=False,
+            overlay_clip_rect=None,
+            feature_overrides={
+                "show_divider": show,
+                "divider_thickness": thickness,
+            },
+        )
+        return TileFrame(
+            index=0,
+            plan=plan,
+            image1=plan.image1,
+            image2=plan.image2,
+            canvas_w=160,
+            canvas_h=90,
+            tile_w=160,
+            tile_h=90,
+        )
+
+    divider_block = pack_tile_divider(_divider_tile(0.3), identity)
+    check(
+        "divider: block is the production 128 B size",
+        len(divider_block) == 128,
+        str(len(divider_block)),
+    )
+    fields = struct.unpack(DIVIDER_UNIFORM_FMT, divider_block)
+    check(
+        "divider: position/fb size follow the plan's split",
+        abs(fields[16] - 160.0) < 1e-6
+        and abs(fields[17] - 90.0) < 1e-6
+        and abs(fields[18] - 160.0 * 0.3) < 1e-4,
+        f"fb=({fields[16]}, {fields[17]}) position={fields[18]}",
+    )
+    check(
+        "divider: per-tile splits pack different blocks",
+        pack_tile_divider(_divider_tile(0.3), identity)
+        != pack_tile_divider(_divider_tile(0.7), identity),
+    )
+    check(
+        "divider: hidden/unthick divider packs nothing",
+        pack_tile_divider(_divider_tile(0.3, show=False), identity) == b""
+        and pack_tile_divider(_divider_tile(0.3, thickness=0), identity) == b"",
+    )
+
     print(f"\nself-test: {len(failures)} failure(s)")
     return 0 if not failures else 1
 
@@ -1276,10 +1796,10 @@ class _SyntheticPlan:
         self.image2 = Image.new("RGBA", (160, 90), (40, 50, 60, 255))
 
 
-def _synthetic_tile() -> TileFrame:
+def _synthetic_tile(index: int = 0) -> TileFrame:
     plan = _SyntheticPlan()
     return TileFrame(
-        index=0,
+        index=int(index),
         plan=plan,
         image1=plan.image1,
         image2=plan.image2,
@@ -1321,6 +1841,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--frames", default=",".join(str(n) for n in DEFAULT_FRAMES))
     parser.add_argument("--tiles", default=f"{DEFAULT_TILE[0]}x{DEFAULT_TILE[1]}")
     parser.add_argument("--reference-samples", type=int, default=0, help="hash only the first K reference tiles (0 = all)")
+    parser.add_argument(
+        "--varied-sources",
+        action="store_true",
+        help=(
+            "worst case: give every frame its own shifted pixels instead of the "
+            "session's shared pair (planning/packing scope; the GPU exactness "
+            "column is informational in this mode)"
+        ),
+    )
     parser.add_argument("-q", "--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -1329,6 +1858,16 @@ def main(argv: list[str] | None = None) -> int:
 
     frames = _parse_frames(args.frames)
     tile_w, tile_h = _parse_tile(args.tiles)
+    if max(tile_w, tile_h) > LAYER_PX:
+        # Production uploads a tile 1:1 into one array layer and refuses an
+        # image larger than the layer (ArrayResources._image_rejection), so a
+        # bigger tile would read back blank and look like a batching verdict.
+        print(
+            f"\nprecondition not met: --tiles {tile_w}x{tile_h} exceeds the "
+            f"{LAYER_PX}px array layer (one tile is uploaded 1:1 into one layer).",
+            file=sys.stderr,
+        )
+        return 1
 
     workdir = Path(tempfile.mkdtemp(prefix="bench-strip-batch-"))
     registry = None
@@ -1347,7 +1886,13 @@ def main(argv: list[str] | None = None) -> int:
         # compile are one-time costs that would otherwise land on N=17 and
         # read as "planning got 10x cheaper with more tiles".
         _warm_tiles, warmup_ms = build_tiles(
-            1, tile_w, tile_h, image1_path, image2_path, verbose=False
+            1,
+            tile_w,
+            tile_h,
+            image1_path,
+            image2_path,
+            verbose=False,
+            varied_sources=args.varied_sources,
         )
         if not args.quiet:
             print(f"warm-up plan (source decode): {warmup_ms:.1f} ms")
@@ -1355,15 +1900,23 @@ def main(argv: list[str] | None = None) -> int:
             if not args.quiet:
                 print(f"\nN={count}")
             tiles, plan_ms = build_tiles(
-                count, tile_w, tile_h, image1_path, image2_path, verbose=not args.quiet
+                count,
+                tile_w,
+                tile_h,
+                image1_path,
+                image2_path,
+                verbose=not args.quiet,
+                varied_sources=args.varied_sources,
             )
-            pack_ms = pack_tiles(tiles)
+            pack_ms, tile_service = pack_tiles(tiles)
             if args.cpu_only:
                 if not args.quiet:
                     print(
                         f"  pack {len(tiles)} tile uniforms+instances in {pack_ms:.2f} ms "
                         f"(block {_uniform_block_size()}B, stride {UNIFORM_STRIDE}B, "
-                        f"instance {len(tiles[0].instance)}B)"
+                        f"instance {len(tiles[0].instance)}B); layers "
+                        f"{[(t.index, t.layer1, t.layer2) for t in tiles[:4]]}"
+                        f"{'...' if len(tiles) > 4 else ''}"
                     )
                 rows.append((count, plan_ms, pack_ms, None, None, None))
                 continue
@@ -1372,7 +1925,7 @@ def main(argv: list[str] | None = None) -> int:
                 tiles, args.reference_samples or None
             )
             batch_hashes, batch_bytes, timings = run_batch_pass(
-                tiles, cols=_cols_for(count)
+                tiles, cols=_cols_for(count), tile_service=tile_service
             )
             matches = sum(
                 1
@@ -1399,6 +1952,7 @@ def main(argv: list[str] | None = None) -> int:
                 for index, blob in enumerate(batch_bytes)
                 if not any(blob[3::4])
             ]
+            layers = {index: (layer1, layer2) for index, layer1, layer2 in timings["layers"]}
             if blank:
                 print(
                     f"  {len(blank)}/{len(batch_bytes)} tiles read back fully "
@@ -1411,7 +1965,8 @@ def main(argv: list[str] | None = None) -> int:
                 ref_hash, _dbg, ref_raw = reference[first_bad]
                 print(
                     f"  MISMATCH tile {first_bad}: reference {ref_hash[:16]} vs batch "
-                    f"{(batch_hashes[first_bad][:16] if first_bad < len(batch_hashes) else '<missing>')}"
+                    f"{(batch_hashes[first_bad][:16] if first_bad < len(batch_hashes) else '<missing>')}; "
+                    f"tile read layers {layers.get(first_bad, ('?', '?'))}"
                 )
                 if first_bad < len(batch_bytes) and first_bad not in blank:
                     differing, first_xy = diff_stats(
@@ -1420,7 +1975,7 @@ def main(argv: list[str] | None = None) -> int:
                     print(
                         f"  tile {first_bad}: {differing}/{total_px} px differ "
                         f"({100.0 * differing / total_px:.1f}%), first at {first_xy} "
-                        "(overlay passes are not in the batch scope)"
+                        "(base draw + divider; nothing else is in either scope)"
                     )
                     same = total_px - differing
                     print(f"  tile {first_bad}: {same}/{total_px} px byte-identical")
@@ -1437,6 +1992,17 @@ def main(argv: list[str] | None = None) -> int:
                     default=0,
                 )
                 print(f"  worst populated tile: {worst}/{total_px} px differ")
+            if not args.quiet:
+                print(
+                    "  tile -> (layer1, layer2) actually sampled: "
+                    + ", ".join(
+                        f"{index}:{layers[index]}" for index in sorted(layers)
+                    )
+                )
+                print(
+                    f"  divider drawn per tile for {len(timings['divider_tiles'])}"
+                    f"/{len(tiles)} tiles"
+                )
             rows.append(
                 (
                     count,
@@ -1457,6 +2023,12 @@ def main(argv: list[str] | None = None) -> int:
 
         print("N | plan_ms | pass_ms | readback_ms | exact_matches/N")
         ok = True
+        if args.varied_sources:
+            print(
+                "note: --varied-sources is a planning/packing worst case; its "
+                "exact column is informational (the reference re-resolves the "
+                "plan's own per-frame proxy)."
+            )
         for count, plan_ms, pass_ms, readback_ms, matches, total in rows:
             print(
                 f"{count:>3} | {plan_ms:>7.1f} | {pass_ms:>7.2f} | "
