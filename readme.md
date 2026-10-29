@@ -67,7 +67,7 @@ Reference: [docs/dev/MCP.md](docs/dev/MCP.md).
 | Platform | How |
 |---|---|
 | Windows | Installer from [Releases](https://github.com/Loganavter/BlinkTable/releases/latest) |
-| Linux (AUR) | `yay -S improve-imgsli` — the AUR package still lags the release; it is renamed to `blinktable` when the maintainer updates it |
+| Linux (AUR) | `yay -S blinktable` |
 | Linux (Flatpak) | `flatpak install io.github.Loganavter.Improve-ImgSLI`, then `flatpak run io.github.Loganavter.Improve-ImgSLI` |
 | From source | `git clone https://github.com/Loganavter/BlinkTable.git && cd BlinkTable && ./launcher.sh run` |
 
