@@ -197,6 +197,17 @@ class VideoEditorPresenter(QObject):
                 # Preferred path: keeps the thumbnail worker thread from
                 # blocking on the GPU round-trip (see ThumbnailService docs).
                 self.thumbnail_service.set_async_snapshot_renderer(async_renderer)
+            cpu_composer = getattr(video_exporter, "compose_thumbnail_cpu", None)
+            if callable(cpu_composer) and hasattr(
+                self.thumbnail_service, "set_cpu_thumbnail_composer"
+            ):
+                # Cheapest path: a ~2 ms PIL composite on the pool thread for
+                # snapshots that need no overlay/diff/channel work. The
+                # service still routes overlay-bearing frames to the GPU
+                # renderer above (thumbnail_needs_gpu), and a composer miss
+                # falls back to the sync GPU render, so this can only speed
+                # the strip up — never change a tile that needs the GPU.
+                self.thumbnail_service.set_cpu_thumbnail_composer(cpu_composer)
             # P1-followup: the exporter-private image repository is cold at
             # dialog open. Session-state image1/image2 are the SAME unified
             # stores the canvas renders and the pyramids were built for —

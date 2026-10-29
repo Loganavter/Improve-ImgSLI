@@ -21,6 +21,9 @@ from tabs.image_compare.services.video_snapshot_rendering.geometry import (
     THUMBNAIL_TARGET_SIZE,
     thumbnail_proxy_dest_scale,
 )
+from tabs.image_compare.services.video_snapshot_rendering.cpu_thumbnail import (
+    compose_thumbnail_cpu as _compose_thumbnail_cpu,
+)
 from tabs.image_compare.plugins.video_editor.services.video_export.bounds import (
     CanvasBoundsAnalyzer,
 )
@@ -364,21 +367,35 @@ class VideoExporterService:
         """Pre-create the offscreen GPU render widgets used for preview and
         thumbnails, well ahead of the video editor dialog being opened.
 
-        Returns True when at least one widget is ready, so the caller can stop
-        retrying: each cold widget costs a full D3D shader/pipeline compile
-        (measured 2026-10-24: ~4 s, twice, on the GUI thread).
+        Returns True only when every offscreen service this exporter owns is
+        ready, so the caller can stop retrying: a False keeps the retry alive,
+        and a retry is cheap once the remaining service is the only cold one
+        (``GpuExportService.warm_up`` re-enters its already-created widget).
         """
-        # ONE canvas is enough to pay the cold shader/pipeline compile; each
-        # additional offscreen widget repeats it in full (measured 2026-10-24:
-        # ~4 s per widget on the Windows build, 4044 + 4066 ms back to back).
-        # The thumbnail renderer keeps its documented lazy creation: it is only
-        # used during an export, where a one-off compile sits behind the
-        # progress dialog instead of freezing an idle canvas.
-        if self.gpu_export_service is not None and hasattr(
-            self.gpu_export_service, "warm_up"
-        ):
-            return bool(self.gpu_export_service.warm_up())
-        return False
+        # Both widgets must be warmed in this one call, because each pays a
+        # full D3D shader/pipeline compile of its own (~4 s per widget on the
+        # Windows build, 4044 + 4066 ms back to back when both were created
+        # here on 2026-10-24). Leaving the thumbnail service cold to its first
+        # use does not avoid that compile, it moves it: the first filmstrip
+        # tile paid ~1.5 s on a worker thread and every later tile stayed
+        # slower (measured 2026-10-29). This call runs on the startup timer,
+        # before the editor is usually opened, so both compiles land where the
+        # user is not waiting on a frame.
+        ready = []
+        for service in (self.gpu_export_service, self._thumbnail_gpu_export_service):
+            if service is None or not hasattr(service, "warm_up"):
+                continue
+            try:
+                ready.append(bool(service.warm_up()))
+            except Exception:
+                # One failed service must not stop the other from warming.
+                logger.debug(
+                    "Offscreen GPU warm-up failed for %s",
+                    type(service).__name__,
+                    exc_info=True,
+                )
+                ready.append(False)
+        return bool(ready) and all(ready)
 
     def _drain_last_render_debug(self) -> dict:
         return self._frame_renderer.drain_last_debug()
@@ -786,6 +803,36 @@ class VideoExporterService:
             callback(result.image)
 
         self._thumbnail_frame_renderer.render_async(snap, request, _on_result)
+
+    def compose_thumbnail_cpu(
+        self, snap, out_w, out_h, *, auto_crop=False
+    ):
+        """Compose a filmstrip tile on the CPU; ``None`` means "use the GPU".
+
+        Resolves the proxy pair through the same P1 seam as the GPU
+        thumbnail path (:meth:`_resolve_thumbnail_images`, a session/pyramid
+        hit never decodes) and delegates the composite to
+        :mod:`...video_snapshot_rendering.cpu_thumbnail`. Any miss — a cold
+        proxy on either side, an unknown mode, an exception — returns
+        ``None`` so the caller keeps today's GPU render (fail open, never a
+        worse tile).
+        """
+        try:
+            (img1, img2), _kinds = self._resolve_thumbnail_images(
+                snap, auto_crop, (max(1, int(out_w)), max(1, int(out_h)))
+            )
+        except Exception:
+            return None
+        if img1 is None or img2 is None:
+            return None
+        return _compose_thumbnail_cpu(
+            snap,
+            out_w,
+            out_h,
+            auto_crop=auto_crop,
+            image1=img1,
+            image2=img2,
+        )
 
     def _deliver_thumbnail_async(self, callback, image) -> None:
         """Fire an async thumbnail ``callback`` on the main thread.
