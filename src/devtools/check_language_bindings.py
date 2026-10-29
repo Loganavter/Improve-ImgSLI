@@ -48,6 +48,10 @@ SCOPE_PATTERNS = (
     "tabs/*/ui/**/*.py",
     "tabs/*/widget.py",
     "tabs/*/plugins/**/*.py",
+    # A tab's own top-level modules carry text too (the session picker's
+    # cards live in ``tabs/session_picker/tab.py``); missing them left a live
+    # switch half-translated while the gate reported clean (2026-10-29).
+    "tabs/*/*.py",
 )
 
 BINDING_PREFIX = "translatable_"

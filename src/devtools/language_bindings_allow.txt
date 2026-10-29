@@ -52,3 +52,7 @@ src/tabs/image_gallery/ui/widget_parts/ask_ai_surface.py	`default_texts()` never
 src/ui/managers/tray_manager.py	`update_language(lang)` is called from `presenters/main_window/state.py::on_language_changed` and rewrites every QAction text; subscribing here would duplicate that hook.
 src/tabs/image_compare/plugins/video_editor/translations.py	the module IS the retranslate entry: `apply_translations(dialog, lang)` rewrites every label/tooltip/combo from an explicit language argument, driven by `VideoEditorPlugin._on_language_changed` (SettingsChangeLanguageEvent) -> `dialog.update_language`.
 src/tabs/image_compare/plugins/video_editor/dialog/shell.py	dialog chrome is re-applied by `update_language()` -> `apply_translations`; the module-level `tr` is only the `_tr(text)` helper used at render time.
+src/tabs/image_compare/tab.py	localized_display_name(language) resolves the session-type title per call; the host re-renders tab titles on language change
+src/tabs/image_gallery/tab.py	localized_display_name(language) resolves the tab title per call; the host re-renders tab titles on language change
+src/tabs/multi_compare/tab.py	localized_display_name(language) resolves the tab title per call; the host re-renders tab titles on language change
+src/tabs/session_picker/tab.py	localized_display_name(language) resolves the tab title per call; the host re-renders tab titles on language change
