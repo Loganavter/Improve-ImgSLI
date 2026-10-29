@@ -89,7 +89,7 @@ Image Compare ставит два изображения рядом. Multi Compa
 | Windows | установщик из [Releases](https://github.com/Loganavter/BlinkTable/releases/latest) |
 | Linux (Flatpak) | `flatpak install io.github.Loganavter.Improve-ImgSLI`, затем `flatpak run io.github.Loganavter.Improve-ImgSLI` |
 | Linux (AUR) | `yay -S improve-imgsli` |
-| Из исходников | `git clone … && cd Improve-ImgSLI && ./launcher.sh run` |
+| Из исходников | `git clone https://github.com/Loganavter/BlinkTable.git && cd BlinkTable && ./launcher.sh run` |
 
 Полная инструкция: [docs/INSTALL.md](docs/INSTALL.md), справочник по лаунчеру:
 [docs/LAUNCHER.md](docs/LAUNCHER.md).

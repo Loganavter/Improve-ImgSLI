@@ -68,7 +68,7 @@ Reference: [docs/dev/MCP.md](docs/dev/MCP.md).
 |---|---|
 | Windows | Installer from [Releases](https://github.com/Loganavter/BlinkTable/releases/latest) |
 | Linux (Flatpak) | `flatpak install io.github.Loganavter.Improve-ImgSLI`, then `flatpak run io.github.Loganavter.Improve-ImgSLI` |
-| From source | `git clone … && cd Improve-ImgSLI && ./launcher.sh run` |
+| From source | `git clone https://github.com/Loganavter/BlinkTable.git && cd BlinkTable && ./launcher.sh run` |
 
 Details: [docs/INSTALL.md](docs/INSTALL.md), [docs/LAUNCHER.md](docs/LAUNCHER.md).
 
