@@ -446,10 +446,22 @@ def _build_snapshot(store, timestamp: float, image1_path: str, image2_path: str)
         FrameSnapshot,
     )
 
+    # The recorder freezes each frame's state (``freeze_for_export``): every
+    # frame owns a DISTINCT viewport/settings clone. Passing the live store
+    # would alias all frames to one state and make a batched strip look
+    # cheaper than it is. The split is nudged per frame so the plans really
+    # differ (a recording's viewport changes over time).
+    viewport = store.viewport.freeze_for_export()
+    try:
+        viewport.view_state.split_position_visual = 0.30 + 0.02 * (
+            int(round(float(timestamp) * 60.0)) % 20
+        )
+    except Exception:
+        pass
     return FrameSnapshot(
         timestamp=float(timestamp),
-        viewport_state=store.viewport,
-        settings_state=store.settings,
+        viewport_state=viewport,
+        settings_state=store.settings.freeze_for_export(),
         image1_path=image1_path,
         image2_path=image2_path,
         name1=Path(image1_path).name,
@@ -496,6 +508,7 @@ def build_tiles(
     image2_path: Path,
     *,
     verbose: bool = True,
+    varied_sources: bool = False,
 ) -> tuple[list[TileFrame], float]:
     """Build ``count`` real frame plans; returns ``(tiles, plan_ms)``.
 
@@ -532,10 +545,15 @@ def build_tiles(
         snap = _build_snapshot(
             store, index / FPS, str(image1_path), str(image2_path)
         )
-        # Per-frame content shift: N visible strip frames of one recording
-        # differ, so a tile cannot pass by sampling a neighbour's layer.
-        frame1 = ImageChops.offset(proxy1, (index * 7) % tile_w, (index * 3) % tile_h)
-        frame2 = ImageChops.offset(proxy2, (index * 5) % tile_w, (index * 11) % tile_h)
+        # The real strip resolves the SAME source pair for every frame (the
+        # session's pyramids); only the frame state differs. ``varied_sources``
+        # keeps the old per-frame pixel shift as an explicit worst case
+        # (different sources per tile), never as the default.
+        if varied_sources:
+            frame1 = ImageChops.offset(proxy1, (index * 7) % tile_w, (index * 3) % tile_h)
+            frame2 = ImageChops.offset(proxy2, (index * 5) % tile_w, (index * 11) % tile_h)
+        else:
+            frame1, frame2 = proxy1, proxy2
         prepared = renderer.prepare_canvas_frame_from_images(
             snap, request, frame1, frame2
         )
