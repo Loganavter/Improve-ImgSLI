@@ -83,7 +83,7 @@ class GpuExportService:
             }
         )
 
-    def warm_up(self) -> None:
+    def warm_up(self) -> bool:
         """Create the offscreen render widget ahead of the first real request.
 
         The widget (and its QRhi context/surface) is normally created lazily
@@ -101,10 +101,14 @@ class GpuExportService:
         traceback. Either way, a failure here just means we fall back to the
         original lazy creation on first real use — it must never surface as
         an unhandled exception.
+
+        Returns True only once the widget exists, so a caller tracking "any
+        widget is warm" can stop retrying; the widget is cached, so a repeat
+        call after a success is a no-op rather than a second compile.
         """
         app = QApplication.instance()
         if app is None:
-            return
+            return False
         try:
             widget = self._proxy._ensure_widget()
             if widget is None:

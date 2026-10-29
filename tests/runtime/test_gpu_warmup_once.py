@@ -72,13 +72,16 @@ def test_gpu_warm_up_reports_success_so_the_caller_can_stop():
         "warm_up_gpu_widgets must return bool: the caller needs success, not a "
         "fire-and-forget call that re-runs the 4 s compile on every activation"
     )
-    # One canvas is enough to pay the cold pipeline compile: a second offscreen
-    # widget repeats it in full (measured 4044 + 4066 ms back to back). The
-    # thumbnail renderer keeps lazy creation, which is exercised during export.
-    assert "self._thumbnail_gpu_export_service.warm_up()" not in text, (
-        "the thumbnail export service must not be warmed alongside the main "
-        "one: each offscreen canvas pays a full cold pipeline compile "
-        "(~4 s), and the thumbnail path is created lazily during export"
+    # Both offscreen widgets are warmed by the one shot (2026-10-29): leaving
+    # the thumbnail service cold only moved its compile onto the first
+    # filmstrip tile, on a worker thread. Parametrising it in the exporter
+    # means the loop must cover both services, so pin the two-way call site
+    # rather than forbidding it (the freeze-on-activation cause was repetition,
+    # not the second widget: the caller's `_gpu_warm_done` gate is above).
+    assert "for service in (self.gpu_export_service, self._thumbnail_gpu_export_service):" in text, (
+        "the one-shot warm-up must cover both offscreen services: the thumbnail "
+        "renderer owns a second widget and pays its own cold pipeline compile "
+        "on the first tile (measured 2026-10-29: ~1.5 s)"
     )
 
     plugin = Path("src/plugins/export/plugin.py").read_text(encoding="utf-8")
