@@ -330,7 +330,13 @@ def test_refresh_retires_only_when_wanted_set_changed(qapp):
     window[:] = [20, 24]
     coordinator._refresh_visible_thumbnails()
     assert retires == [1], "changed wanted set retires in-flight workers"
-    assert additional[-1] == [20, 24]
+    assert additional[-2] == [20, 24], (
+        "the visible window is queued first after the retire"
+    )
+    assert additional[-1] == list(range(100)), (
+        "the retiring refresh re-arms the idle fill for the unseen remainder "
+        "(this spy does not track pending, so the remainder is every index)"
+    )
 
 
 def test_refresh_without_retire_seam_stays_visible_only(qapp):
@@ -424,7 +430,54 @@ def test_scroll_with_stable_zoom_still_retires(qapp):
     window[:] = [20, 24]
     coordinator._refresh_visible_thumbnails()
     assert retires == [1], "scroll/pan (zoom stable) retires as before"
-    assert additional[-1] == [20, 24]
+    assert additional[-2] == [20, 24]
+    assert additional[-1] == list(range(100))
+
+
+def test_retire_rearms_the_idle_fill(qapp):
+    """A retiring refresh must re-arm the P3 fill (owner 2026-10-29).
+
+    Live report: in the video editor the filmstrip kept the frame count of
+    the first layout — a resize/scroll settle retired the in-flight wave,
+    that wave's ``generationFinished`` was the only carrier of the idle
+    fill, and nothing re-queued the unseen remainder. Measured on a leased
+    instance (40 s recording, 2406 frames): 16 painted thumbnails after
+    the first resize, no growth afterwards.
+
+    Falsification: without the re-arm the retiring refresh queues only the
+    visible window, so the remainder assertion below is red.
+    """
+    window: list[int] = [0, 1, 2]
+    additional: list[list[int]] = []
+    pending: set[int] = set()
+
+    def queue(indices, fps=None):
+        additional.append(list(indices))
+        pending.update(indices)
+
+    service = SimpleNamespace(
+        retire_in_flight_thumbnails=lambda: (pending.clear(), 2)[1],
+        generate_additional_thumbnails=queue,
+        # The visible wave produced its pixels; the retire clears pending,
+        # so every other index is still unseen when the fill re-arms.
+        _generated_indices={0, 1, 2},
+        _pending_indices=pending,
+    )
+    coordinator = _zoom_coordinator(
+        timeline_indices=window, service=service, zoom=1.0, total_frames=20
+    )
+
+    coordinator._refresh_visible_thumbnails()  # baseline, no retire
+    additional.clear()
+
+    window[:] = [8, 12, 16]  # resize/scroll settle, zoom unchanged
+    coordinator._refresh_visible_thumbnails()
+
+    assert additional[0] == [8, 12, 16], "visible window keeps first claim"
+    assert additional[-1] == [3, 4, 5, 6, 7, 9, 10, 11, 13, 14, 15, 17, 18, 19], (
+        "the retiring refresh must re-arm the idle fill; otherwise the "
+        "strip stops at the visible window and never grows again"
+    )
 
 
 def test_zoom_unreadable_keeps_scroll_cancel(qapp):
