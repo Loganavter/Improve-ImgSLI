@@ -144,6 +144,10 @@ class ThumbnailService(QObject):
         self._thumbnail_render_scale = DEFAULT_THUMBNAIL_RENDER_SCALE
         self._render_snapshot: Optional[Callable[..., Optional[Image.Image]]] = None
         self._render_snapshot_async: Optional[Callable[..., None]] = None
+        # CPU composite path (see set_cpu_thumbnail_composer): PIL out, no GPU.
+        self._cpu_thumbnail_composer: Optional[
+            Callable[..., Optional[Image.Image]]
+        ] = None
         self._auto_crop = False
         self._active_workers = 0
         self._fps = 60
@@ -364,6 +368,68 @@ class ThumbnailService(QObject):
             )
             return None
 
+    def _generate_single_thumbnail_cpu(
+        self,
+        index: int,
+        thumbnail_size: Tuple[int, int],
+        auto_crop: bool,
+        render_scale: float,
+        fps: int,
+        progress_callback,
+        snap=None,
+        composer=None,
+        gpu_render=None,
+    ):
+        """CPU counterpart of :meth:`_generate_single_thumbnail`.
+
+        ``snap`` is the queue-time capture (I5) — the same snapshot the
+        caller already gated on ``thumbnail_needs_gpu``, so the decision to
+        use this worker and the pixels it composes cannot drift apart. A
+        composer ``None`` (cold proxy on either side, any doubt) falls back
+        to the sync GPU renderer *inside* this worker, so the tile still
+        appears exactly as it did before this path existed; that fallback
+        pays the blocking round-trip, which is why it is the rare branch.
+        """
+        try:
+            if snap is None or composer is None:
+                _thlog.debug(
+                    "thumbnail_worker_drop index=%s reason=no-cpu-capture",
+                    index,
+                )
+                return None
+            target_w, target_h = _thumbnail_render_target_size(
+                thumbnail_size, render_scale
+            )
+            _thlog.debug(
+                "thumbnail_worker_start index=%s fps=%s cpu=True", index, fps
+            )
+            composed = composer(snap, target_w, target_h, auto_crop=auto_crop)
+            if composed is not None:
+                result = _finish_thumbnail_image(composed, thumbnail_size)
+                _thlog.debug(
+                    "thumbnail_worker_end index=%s ok=%s size=%s cpu=True",
+                    index,
+                    result is not None,
+                    getattr(result, "size", None),
+                )
+                return result
+            _thlog.debug("thumbnail_worker_cpu_miss index=%s -> gpu", index)
+            if gpu_render is None:
+                return None
+            return _render_thumbnail_using_renderer(
+                snap,
+                thumbnail_size,
+                auto_crop,
+                render_scale,
+                gpu_render,
+            )
+        except Exception as e:
+            logger.error(
+                f"Error generating CPU thumbnail at index {index}: {e}",
+                exc_info=True,
+            )
+            return None
+
     def _coerce_recording(self, recording):
         if isinstance(recording, KeyframedRecording):
             return recording
@@ -421,6 +487,22 @@ class ThumbnailService(QObject):
         thumbnail's CPU prep instead of blocking on the round-trip.
         """
         self._render_snapshot_async = renderer
+
+    def set_cpu_thumbnail_composer(
+        self, composer: Optional[Callable[..., Optional[Image.Image]]]
+    ) -> None:
+        """Inject the CPU tile composer (mirror of the renderer setters).
+
+        ``composer(snap, out_w, out_h, *, auto_crop=...) -> PIL | None``.
+        When it is set and the snapshot carries nothing a composite cannot
+        reproduce (:func:`thumbnail_needs_gpu` from
+        ``video_snapshot_rendering.cpu_thumbnail``), the worker composes the
+        tile in PIL instead of submitting an offscreen GPU round-trip; a
+        ``None`` from the composer falls back to the sync GPU renderer so
+        the tile still appears. Queueing, the generation token, the pending
+        set and the disk cache are untouched by this path.
+        """
+        self._cpu_thumbnail_composer = composer
 
     def set_thumbnail_disk_cache(self, cache) -> None:
         """Inject the persistent thumbnail disk cache (None disables it).
@@ -677,6 +759,7 @@ class ThumbnailService(QObject):
         queued_scale = self._thumbnail_render_scale
         queued_render = self._render_snapshot
         queued_render_async = self._render_snapshot_async
+        queued_composer = self._cpu_thumbnail_composer
         # P2: finished-thumbnail disk lookup before queueing — a hit emits
         # via the normal _on_thumbnail_generated path with no worker started.
         try:
@@ -705,6 +788,53 @@ class ThumbnailService(QObject):
             thumbnail_size=queued_size,
             render_scale=queued_scale,
         )
+
+        if queued_composer is not None and queued_render is not None:
+            # CPU tile path: one PIL composite on the pool thread instead of
+            # an offscreen GPU round-trip (15-30 ms warm vs ~2 ms measured).
+            # Gated on the snapshot alone — a snapshot carrying overlays,
+            # diff, channel-unknown or single-image preview still takes the
+            # GPU path below, unchanged. The sync worker shape is kept so the
+            # generation token / pending set / result signal deliver the PIL
+            # to the main thread exactly like today; a composer ``None``
+            # falls back to the sync GPU renderer inside the worker.
+            from tabs.image_compare.services.video_snapshot_rendering.cpu_thumbnail import (
+                thumbnail_needs_gpu,
+            )
+
+            queued_snap = None
+            try:
+                if queued_recording is not None:
+                    queued_snap = queued_recording.evaluate_at(
+                        float(index) / float(max(1, queued_fps))
+                    )
+                needs_gpu = queued_snap is None or thumbnail_needs_gpu(queued_snap)
+            except Exception:
+                needs_gpu = True
+            if not needs_gpu:
+                worker = GenericWorker(
+                    self._generate_single_thumbnail_cpu,
+                    index,
+                    queued_size,
+                    queued_crop,
+                    queued_scale,
+                    queued_fps,
+                    None,
+                    queued_snap,
+                    queued_composer,
+                    queued_render,
+                )
+                worker.signals.result.connect(
+                    lambda result, i=index, g=generation, c=queued_cache, k=queued_key: self._on_thumbnail_generated(
+                        i, result, g, cache=c, cache_key=k
+                    )
+                )
+                if track_finish:
+                    worker.signals.finished.connect(
+                        lambda g=generation: self._on_worker_finished(g)
+                    )
+                self._thread_pool.start(worker, priority=priority)
+                return
 
         if queued_render_async is not None:
             # Async path: the worker submits the GPU render and returns
