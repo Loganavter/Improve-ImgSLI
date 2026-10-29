@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=BlinkTable
-Comment=Compare, measure and prove image quality
+Comment=Compare images and video frames
 Exec=@LAUNCHER_PATH@ run %F
 Icon=@ICON_PATH@
 Terminal=false

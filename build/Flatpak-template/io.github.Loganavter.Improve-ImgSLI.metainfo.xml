@@ -4,7 +4,7 @@
   <metadata_license>MIT</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <name>BlinkTable</name>
-  <summary>Compare, measure and prove image quality — pick the keeper</summary>
+  <summary>Compare images and video frames</summary>
   <description>
     <p>
       BlinkTable is a workspace where image and video quality is compared, measured and proven: split, zoom, magnifiers, difference modes, objective metrics, a ranked verdict and an export that matches what is on screen. It is built for photographers, retouchers, upscaling and ML pipelines, and anyone who has to compare images at pixel level without losing context.
