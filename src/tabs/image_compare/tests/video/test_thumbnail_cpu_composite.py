@@ -216,11 +216,26 @@ def test_gate_flags_overlay_and_filename_state():
     assert thumbnail_needs_gpu(
         _snap(states={"guides": GuidesWidgetState(enabled=True)})
     ) is True
+    # A disabled magnifier with its default instance model is COMPOSABLE:
+    # the live canvas always carries that model while the loupe paints
+    # nothing until the feature flag turns on (measured 2026-10-29: a default
+    # session capture shows no loupe, and gating on ``models`` would have
+    # sent every real recording to the GPU path).
     assert thumbnail_needs_gpu(
         _snap(
             states={
                 "magnifier": MagnifierWidgetState(
                     enabled=False,
+                    models={"default": object()},
+                )
+            }
+        )
+    ) is False
+    assert thumbnail_needs_gpu(
+        _snap(
+            states={
+                "magnifier": MagnifierWidgetState(
+                    enabled=True,
                     models={"default": object()},
                 )
             }
