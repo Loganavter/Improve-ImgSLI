@@ -1,6 +1,8 @@
 import logging
 from typing import Callable, Dict, List
 
+# Audit-Meta: pattern=state-machine reason="SettleGate + wave generation + membership filter + idle-fill re-arm are one generation state machine; a split would separate the retire from the fill it must re-arm"
+
 from PySide6.QtGui import QPixmap
 from sli_ui_toolkit.managers import SettleGate
 from sli_ui_toolkit.ui.widgets.composite.timeline_widget import (
@@ -275,12 +277,25 @@ class ThumbnailCoordinator:
             self.emit_thumbnails_updated(thumbnails)
 
     def on_thumbnails_generation_finished(self):
-        # P3 idle fill: the initial wave covered the visible window only
-        # (visible-window-exact queue). Queue every still-unseen index at
-        # background priority — generate_additional runs them at lower pool
-        # priority and consults the P2 disk cache first, so a warm
-        # remainder costs ~zero. track_finish=False there means this fill
-        # never re-emits generationFinished: no loop, no second scheduler.
+        """P3 idle fill entry — see :meth:`_queue_idle_remainder`."""
+        return self._queue_idle_remainder()
+
+    def _queue_idle_remainder(self):
+        """Queue every still-unseen index at background priority (idempotent).
+
+        The initial wave covers the visible window only; this fill runs the
+        rest at lower pool priority and consults the P2 disk cache first
+        (a warm remainder costs ~zero). ``track_finish=False`` there means
+        the fill never re-emits ``generationFinished``: no loop.
+
+        Also re-armed by :meth:`_refresh_visible_thumbnails` on every
+        retiring refresh. A retire abandons that wave's completions, and
+        the fill used to ride exactly its ``generationFinished``, so the
+        first scroll/resize settled the strip at the visible window and it
+        never grew again (owner report 2026-10-29: the filmstrip kept the
+        frame count of the first layout). Only unseen, non-pending indices
+        queue, so a re-arm never duplicates live work.
+        """
         try:
             if self.editor_service is None:
                 return None
@@ -409,6 +424,7 @@ class ThumbnailCoordinator:
                 and current_zoom is not None
                 and current_zoom != self._last_zoom_level
             )
+            retired = False
             if self._last_visible_indices is not None and set(
                 visible_indices
             ) != set(self._last_visible_indices):
@@ -432,6 +448,7 @@ class ThumbnailCoordinator:
                         retired_generation = retire()
                         if isinstance(retired_generation, int):
                             self._feed_generation = retired_generation
+                        retired = True
             # NOTE (rep-remap, I1/I2): a zoom-driven refresh that skips the
             # retire above keeps the in-flight wave alive while the rep grid
             # remaps (strip_block_layout recomputes rep frames from geometry
@@ -450,6 +467,15 @@ class ThumbnailCoordinator:
                 visible_indices,
                 fps=self.editor_service.get_fps(),
             )
+            if retired:
+                # The retire above abandoned the in-flight wave (its
+                # completions drop as stale), and that wave's
+                # generationFinished carried the P3 idle fill — so without
+                # this re-arm the strip stops at the visible window and
+                # never grows again. Queued AFTER the visible window so
+                # on-screen frames keep first claim on the pool; the
+                # remainder is idempotent (only unseen, non-pending).
+                self._queue_idle_remainder()
         else:
             try:
                 from tabs.image_compare.debug import ic_thumbnail_debug
