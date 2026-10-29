@@ -91,8 +91,7 @@ Full instructions: [docs/INSTALL.md](docs/INSTALL.md) · launcher reference:
 [docs/LAUNCHER.md](docs/LAUNCHER.md).
 
 Images above `65536 px` on a side are rejected on the bounded decode path;
-streaming decode has no such bound. Still-image export above `16384 px` warns
-that the path is untested.
+streaming decode has no such bound.
 
 ## First five minutes
 

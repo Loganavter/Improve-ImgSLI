@@ -11,9 +11,6 @@
     "saved": "Salvo",
     "saving": "Salvando",
     "saving_canceled": "Salvamento cancelado",
-    "export_untested_resolution_title": "Resolução de exportação não testada",
-    "export_untested_resolution_body": "A resolução de exportação excede {edge} px em um lado ({width}×{height}). A renderização pode falhar ou esgotar a memória — acima de {edge} px nada é garantido e não foi testado. Continuar mesmo assim?",
-    "dont_show_again": "Não mostrar novamente",
     "cache_purge_notice_title": "Cache antigo limpo",
     "cache_purge_notice_body": "Um bug em uma versão anterior podia deixar arquivos de cache de imagem temporários acumulados entre sessões. Encontramos e removemos {size} de cache remanescente — nenhuma ação adicional é necessária."
   },

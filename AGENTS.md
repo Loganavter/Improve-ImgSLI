@@ -250,9 +250,8 @@ An outdated comment is a **correctness defect**: agents execute prose as truth
   `requirements-gui.txt`, `python-pyvips` in AUR, a `python3-pyvips` Flatpak
   module) — but the bundled `pyvips-binary` libvips lacks JXL, so JXL keeps
   the bounded imagecodecs path in Flatpak/Windows while distro libvips
-  streams it. Still-image export above `16384 px`
-  (`AppConstants.EXPORT_TESTED_MAX_EDGE`) is allowed but warns that the
-  path is untested (Image Compare and Multi Compare).
+  streams it. Still-image export has no soft ceiling of its own — the export
+  path is tiled.
 - Full-resolution pixel data for all canvas tabs lives in `TiledPixelStore` ([src/engine/store/tiled_pixel_store.py](src/engine/store/tiled_pixel_store.py)) — memmap-backed, always tiled. Shared render helpers: [src/engine/gpu/host_texture_cache.py](src/engine/gpu/host_texture_cache.py) (`HostTextureUploadCache`), [src/engine/gpu/export_tiling.py](src/engine/gpu/export_tiling.py), [src/engine/cache/tile_geometry.py](src/engine/cache/tile_geometry.py).
 - `ssim` has special handling because some paths depend on cached diff images and GPU diff textures.
 - Help pages now support anchors and generated in-page TOC. Keep headings stable.
