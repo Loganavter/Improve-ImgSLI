@@ -14,6 +14,19 @@ from core.log_names import APP_LOGGER_NAME
 
 logger = logging.getLogger(APP_LOGGER_NAME)
 
+_IDLE_FILL_OVERSCAN_BLOCKS = 24
+"""Blocks of look-ahead the idle fill pre-renders on each side of the viewport.
+
+The strip draws one thumbnail per BLOCK, never per frame: a fitted 40 s
+recording is ~14 blocks while its frame count is 2406. Filling
+``range(total_frames)`` therefore rendered ~170 thumbnails for every tile
+that can be on screen (owner report 2026-10-29: "превью в ленте генерятся
+крайне долго", ~15 ms per thumbnail). The fill now covers the block reps of
+the viewport plus this look-ahead, so a fitted strip is complete after its
+first wave and a zoomed-in strip pre-renders about two windows ahead; the
+retiring refresh re-arms it as the viewport moves.
+"""
+
 
 class ThumbnailCoordinator:
     def __init__(
@@ -281,12 +294,18 @@ class ThumbnailCoordinator:
         return self._queue_idle_remainder()
 
     def _queue_idle_remainder(self):
-        """Queue every still-unseen index at background priority (idempotent).
+        """Queue the unseen look-ahead reps at background priority (idempotent).
 
         The initial wave covers the visible window only; this fill runs the
-        rest at lower pool priority and consults the P2 disk cache first
-        (a warm remainder costs ~zero). ``track_finish=False`` there means
-        the fill never re-emits ``generationFinished``: no loop.
+        viewport plus ``_IDLE_FILL_OVERSCAN_BLOCKS`` of look-ahead at lower
+        pool priority and consults the P2 disk cache first (a warm remainder
+        costs ~zero). ``track_finish=False`` there means the fill never
+        re-emits ``generationFinished``: no loop.
+
+        The wanted set comes from the strip's own block layout, not from
+        ``range(total_frames)``: the strip draws one thumbnail per block, so
+        a per-frame fill rendered orders of magnitude more thumbnails than
+        the strip can ever show (see ``_IDLE_FILL_OVERSCAN_BLOCKS``).
 
         Also re-armed by :meth:`_refresh_visible_thumbnails` on every
         retiring refresh. A retire abandons that wave's completions, and
@@ -300,6 +319,13 @@ class ThumbnailCoordinator:
             if self.editor_service is None:
                 return None
             total_frames = self.editor_service.get_frame_count()
+            if not isinstance(total_frames, int) or total_frames <= 0:
+                return None
+            wanted = self.get_visible_frame_indices(
+                margin=_IDLE_FILL_OVERSCAN_BLOCKS
+            )
+            if not wanted:
+                return None
             generated = set(
                 getattr(self.thumbnail_service, "_generated_indices", None)
                 or ()
@@ -307,12 +333,8 @@ class ThumbnailCoordinator:
             pending = set(
                 getattr(self.thumbnail_service, "_pending_indices", None) or ()
             )
-            if not isinstance(total_frames, int) or total_frames <= 0:
-                return None
             remainder = [
-                i
-                for i in range(total_frames)
-                if i not in generated and i not in pending
+                i for i in wanted if i not in generated and i not in pending
             ]
             if remainder:
                 self.thumbnail_service.generate_additional_thumbnails(
