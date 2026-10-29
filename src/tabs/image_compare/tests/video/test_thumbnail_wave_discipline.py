@@ -246,11 +246,14 @@ def _coordinator(*, timeline_indices, service, total_frames=100):
         ThumbnailCoordinator,
     )
 
-    timeline = SimpleNamespace(
-        get_visible_thumbnail_frame_indices=(
-            lambda overscan_blocks=0: list(timeline_indices)
-        ),
-    )
+    def visible(overscan_blocks=0):
+        # Model the real widget: a block overscan widens the window past the
+        # visible reps (contiguous frames are enough for the queue contract).
+        if overscan_blocks and overscan_blocks > 2:
+            return list(range(0, min(total_frames, len(timeline_indices) + int(overscan_blocks))))
+        return list(timeline_indices)
+
+    timeline = SimpleNamespace(get_visible_thumbnail_frame_indices=visible)
     return ThumbnailCoordinator(
         view=SimpleNamespace(timeline=timeline),
         editor_service=SimpleNamespace(
@@ -333,9 +336,9 @@ def test_refresh_retires_only_when_wanted_set_changed(qapp):
     assert additional[-2] == [20, 24], (
         "the visible window is queued first after the retire"
     )
-    assert additional[-1] == list(range(100)), (
-        "the retiring refresh re-arms the idle fill for the unseen remainder "
-        "(this spy does not track pending, so the remainder is every index)"
+    assert additional[-1] == list(range(26)), (
+        "the retiring refresh re-arms the idle fill for the look-ahead "
+        "window (visible 2 reps + 24 blocks), never the whole frame range"
     )
 
 
@@ -431,7 +434,7 @@ def test_scroll_with_stable_zoom_still_retires(qapp):
     coordinator._refresh_visible_thumbnails()
     assert retires == [1], "scroll/pan (zoom stable) retires as before"
     assert additional[-2] == [20, 24]
-    assert additional[-1] == list(range(100))
+    assert additional[-1] == list(range(26))
 
 
 def test_retire_rearms_the_idle_fill(qapp):
@@ -477,6 +480,38 @@ def test_retire_rearms_the_idle_fill(qapp):
     assert additional[-1] == [3, 4, 5, 6, 7, 9, 10, 11, 13, 14, 15, 17, 18, 19], (
         "the retiring refresh must re-arm the idle fill; otherwise the "
         "strip stops at the visible window and never grows again"
+    )
+
+
+def test_idle_fill_is_bounded_by_the_block_look_ahead(qapp):
+    """A 2400-frame recording must not queue 2400 renders (owner 2026-10-29).
+
+    The strip draws one thumbnail per BLOCK: a fitted 40 s recording is ~14
+    blocks while its frame count is 2406. The fill used to queue every frame
+    (~15 ms each), which is why previews "generate extremely slowly".
+    Falsification: with the per-frame fill this asserts on a 2400-item queue.
+    """
+    additional: list[list[int]] = []
+    service = SimpleNamespace(
+        generate_additional_thumbnails=(
+            lambda indices, fps=None: additional.append(list(indices))
+        ),
+        _generated_indices=set(),
+        _pending_indices=set(),
+    )
+    coordinator = _coordinator(
+        timeline_indices=list(range(0, 2400, 170))[:14],
+        service=service,
+        total_frames=2400,
+    )
+
+    coordinator.on_thumbnails_generation_finished()
+
+    assert additional, "the fill must still queue the look-ahead"
+    assert len(additional[0]) < 100, (
+        f"the fill queued {len(additional[0])} thumbnails for a 2400-frame "
+        "recording; it must be bounded by the block look-ahead, not by the "
+        "frame count"
     )
 
 
