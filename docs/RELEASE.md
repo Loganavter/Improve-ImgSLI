@@ -1,4 +1,4 @@
-# Release checklist (11.0.0 and later)
+# Release checklist (11.0.1 and later)
 
 Where every version string lives, what must be regenerated, and what can only
 be finished **after** the tag and the toolkit upload exist. Local gates are
@@ -6,17 +6,17 @@ authoritative here: CI is the backstop, not the feedback loop.
 
 ## 1. Version sources (all must agree)
 
-| Surface | File | 11.0.0 value |
+| Surface | File | 11.0.1 value |
 |---|---|---|
-| Runtime / window / reports | `src/core/constants.py` (`APP_VERSION`) | `11.0.0` |
-| Flatpak metainfo (newest `<release>`) | `build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.metainfo.xml` | `11.0.0` + **today's** date (Moscow) |
-| AUR package | `build/AUR-template/PKGBUILD` (`pkgver`) | `11.0.0` |
-| Windows installer | `build/Windows-template/inno_setup_6.iss` (`#define MyAppVersion`) | `11.0.0` |
-| Windows setup exe name | `build/Windows-template/build_windows.py` | `Improve_ImgSLI_Setup_v11.0.0.exe` |
-| Flatpak source archive | `build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.yaml` | `Improve-ImgSLI-11.0.0.tar.gz` |
+| Runtime / window / reports | `src/core/constants.py` (`APP_VERSION`) | `11.0.1` |
+| Flatpak metainfo (newest `<release>`) | `build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.metainfo.xml` | `11.0.1` + **today's** date (Moscow) |
+| AUR package | `build/AUR-template/PKGBUILD` (`pkgver`) | `11.0.1` |
+| Windows installer | `build/Windows-template/inno_setup_6.iss` (`#define MyAppVersion`) | `11.0.1` |
+| Windows setup exe name | `build/Windows-template/build_windows.py` | `BlinkTable_Setup_v11.0.1.exe` |
+| Flatpak source archive | `build/Flatpak-template/io.github.Loganavter.Improve-ImgSLI.yaml` | `Improve-ImgSLI-11.0.1.tar.gz` |
 | Toolkit pin (Flatpak) | `build/Flatpak-template/python3-modules.json` | `sli-ui-toolkit==4.0.1` |
 | Toolkit floor (AUR) | `build/AUR-template/PKGBUILD` (`python-sli-ui-toolkit>=`) | `>=4.0.1` |
-| Changelog | `CHANGELOG.md` | `## [11.0.0] — <date>` |
+| Changelog | `CHANGELOG.md` | `## [11.0.1] — <date>` |
 
 Gate: `python3 build/ci/validate_release_metadata.py` (version agreement,
 metainfo date, AUR floor vs Flatpak pin) and
@@ -40,7 +40,7 @@ python3 scripts/check_comment_citations.py
    the Flatpak manifest pins. The manifest's `sha256` is the hash of that file;
    rebuilding the sdist changes it, so upload the file that was hashed (or
    re-pin it, see §4).
-2. **App** `v11.0.0` tag → `updpkgsums` in `build/AUR-template/PKGBUILD`
+2. **App** `v11.0.1` tag → `updpkgsums` in `build/AUR-template/PKGBUILD`
    (the first sum is the GitHub tag archive and cannot be computed before the
    tag exists) → AUR push → GitHub release.
 3. Flatpak: build + submit with the pinned toolkit sdist (§4).

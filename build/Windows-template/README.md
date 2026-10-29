@@ -33,7 +33,7 @@ build/Windows-template/product_name.py     ← derives every artifact name/path
 
 `inno_setup_6.iss` cannot import Python (Inno's preprocessor has no Python
 support), so it repeats the values as `#define` literals — including the fixed
-`AppId` and `MyAppVersion "11.0.0"`. That is the *only* other place the name is
+`AppId` and `MyAppVersion "11.0.1"`. That is the *only* other place the name is
 spelled, and
 `build/Windows-template/check_product_name.py` is the gate that keeps it in
 agreement with `APP_NAME`:

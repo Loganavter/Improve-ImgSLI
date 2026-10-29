@@ -4,7 +4,7 @@
 # Product name is BlinkTable (src/core/log_names.py APP_NAME); the repo and
 # AUR source stay 'Improve-ImgSLI' because that is the GitHub archive name.
 pkgname=blinktable
-pkgver=11.0.0
+pkgver=11.0.1
 pkgrel=1
 _piqver=0.8.0
 pkgdesc="Image comparison tool with magnifying glass feature"

@@ -5,7 +5,7 @@ class AppConstants:
     # runtime, e.g. for QApplication.setApplicationVersion and for the
     # last-seen-version check in core.bootstrap that offers a one-time
     # stale-cache purge notice after upgrading from an untracked version.
-    APP_VERSION = "11.0.0"
+    APP_VERSION = "11.0.1"
 
     MIN_NAME_LENGTH_LIMIT = 10
     MAX_NAME_LENGTH_LIMIT = 150

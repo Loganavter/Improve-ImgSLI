@@ -1,5 +1,11 @@
 # Changelog
 
+## [11.0.1] — 2026-10-29
+
+- Export no longer warns that a still image above 16384 px is "untested": the warning, its persisted setting, its i18n strings and the module behind it are gone. Export was and stays tiled at any size.
+- The repository and the visible identity are BlinkTable; the Flatpak app-id, the AUR package name, MIME and settings keys deliberately stay as they were so installs and preferences carry over.
+- README rewritten around the three session types, with three screenshots from a live instance; help pages and docs updated for the export change.
+
 ## [11.0.0] — 2026-10-22
 
 ### Changed
