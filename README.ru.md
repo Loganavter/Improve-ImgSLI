@@ -87,9 +87,9 @@ Image Compare ставит два изображения рядом. Multi Compa
 | Платформа | Как |
 |---|---|
 | Windows | установщик из [Releases](https://github.com/Loganavter/BlinkTable/releases/latest) |
+| Linux (AUR) | `yay -S blinktable` |
 | Linux (Flatpak) | `flatpak install io.github.Loganavter.Improve-ImgSLI`, затем `flatpak run io.github.Loganavter.Improve-ImgSLI` |
-| Linux (AUR) | `yay -S improve-imgsli` |
-| Из исходников | `git clone … && cd Improve-ImgSLI && ./launcher.sh run` |
+| Из исходников | `git clone https://github.com/Loganavter/BlinkTable.git && cd BlinkTable && ./launcher.sh run` |
 
 Полная инструкция: [docs/INSTALL.md](docs/INSTALL.md), справочник по лаунчеру:
 [docs/LAUNCHER.md](docs/LAUNCHER.md).
@@ -148,7 +148,7 @@ Issues и pull requests идут через GitHub.
     </td>
     <td valign="top">
       <strong>Сопровождающий пакета AUR</strong>
-      <p>Nebulosa ведёт пакет <a href="https://aur.archlinux.org/packages/improve-imgsli">Arch Linux (AUR)</a> с самого начала проекта: правки упаковки и работа над стабильностью в экосистеме Arch.</p>
+      <p>Nebulosa ведёт пакет <a href="https://aur.archlinux.org/packages/blinktable">Arch Linux (AUR)</a> с самого начала проекта: правки упаковки и работа над стабильностью в экосистеме Arch.</p>
       <a href="https://github.com/nebulosa2007"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"></a>
       <a href="https://aur.archlinux.org/account/Nebulosa"><img src="https://img.shields.io/badge/AUR-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white" alt="AUR Profile"></a>
     </td>

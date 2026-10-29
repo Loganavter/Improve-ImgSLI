@@ -67,8 +67,9 @@ Reference: [docs/dev/MCP.md](docs/dev/MCP.md).
 | Platform | How |
 |---|---|
 | Windows | Installer from [Releases](https://github.com/Loganavter/BlinkTable/releases/latest) |
+| Linux (AUR) | `yay -S blinktable` |
 | Linux (Flatpak) | `flatpak install io.github.Loganavter.Improve-ImgSLI`, then `flatpak run io.github.Loganavter.Improve-ImgSLI` |
-| From source | `git clone … && cd Improve-ImgSLI && ./launcher.sh run` |
+| From source | `git clone https://github.com/Loganavter/BlinkTable.git && cd BlinkTable && ./launcher.sh run` |
 
 Details: [docs/INSTALL.md](docs/INSTALL.md), [docs/LAUNCHER.md](docs/LAUNCHER.md).
 
@@ -104,7 +105,7 @@ Setup, coding guidelines and packaging notes are in [CONTRIBUTING.md](CONTRIBUTI
     </td>
     <td valign="top">
       <strong>AUR package maintainer</strong>
-      <p>Maintains the <a href="https://aur.archlinux.org/packages/improve-imgsli">Arch Linux (AUR)</a> package since the start of the project.</p>
+      <p>Maintains the <a href="https://aur.archlinux.org/packages/blinktable">Arch Linux (AUR)</a> package since the start of the project.</p>
       <a href="https://github.com/nebulosa2007"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"></a>
       <a href="https://aur.archlinux.org/account/Nebulosa"><img src="https://img.shields.io/badge/AUR-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white" alt="AUR Profile"></a>
     </td>
