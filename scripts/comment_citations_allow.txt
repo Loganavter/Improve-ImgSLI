@@ -28,6 +28,11 @@ TextureArraySizeMax
 UBuf
 Xvfb
 _apply_preview_scene
+# GLSL identifiers cited from the CPU thumbnail composer
+# (src/tabs/image_compare/services/video_snapshot_rendering/cpu_thumbnail.py
+# mirrors canvas/shaders/base_array.frag). Runtime names, not repo symbols.
+applyChannel
+useFirst
 _csd_title_bar
 _current_task_id
 _file

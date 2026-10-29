@@ -21,6 +21,9 @@ from tabs.image_compare.services.video_snapshot_rendering.geometry import (
     THUMBNAIL_TARGET_SIZE,
     thumbnail_proxy_dest_scale,
 )
+from tabs.image_compare.services.video_snapshot_rendering.cpu_thumbnail import (
+    compose_thumbnail_cpu as _compose_thumbnail_cpu,
+)
 from tabs.image_compare.plugins.video_editor.services.video_export.bounds import (
     CanvasBoundsAnalyzer,
 )
@@ -800,6 +803,36 @@ class VideoExporterService:
             callback(result.image)
 
         self._thumbnail_frame_renderer.render_async(snap, request, _on_result)
+
+    def compose_thumbnail_cpu(
+        self, snap, out_w, out_h, *, auto_crop=False
+    ):
+        """Compose a filmstrip tile on the CPU; ``None`` means "use the GPU".
+
+        Resolves the proxy pair through the same P1 seam as the GPU
+        thumbnail path (:meth:`_resolve_thumbnail_images`, a session/pyramid
+        hit never decodes) and delegates the composite to
+        :mod:`...video_snapshot_rendering.cpu_thumbnail`. Any miss — a cold
+        proxy on either side, an unknown mode, an exception — returns
+        ``None`` so the caller keeps today's GPU render (fail open, never a
+        worse tile).
+        """
+        try:
+            (img1, img2), _kinds = self._resolve_thumbnail_images(
+                snap, auto_crop, (max(1, int(out_w)), max(1, int(out_h)))
+            )
+        except Exception:
+            return None
+        if img1 is None or img2 is None:
+            return None
+        return _compose_thumbnail_cpu(
+            snap,
+            out_w,
+            out_h,
+            auto_crop=auto_crop,
+            image1=img1,
+            image2=img2,
+        )
 
     def _deliver_thumbnail_async(self, callback, image) -> None:
         """Fire an async thumbnail ``callback`` on the main thread.

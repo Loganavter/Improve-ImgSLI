@@ -108,6 +108,28 @@ def fit_source_to_content(
     return out
 
 
+def cover_crop_box(
+    source_size: tuple[int, int], content_size: tuple[int, int]
+) -> tuple[int, int, int, int] | None:
+    """Pure geometry of the cover fit: ``(grown_w, grown_h, left, top)``.
+
+    Scale by the max ratio, then center-crop to ``content_size`` — the box
+    :func:`cover_source_to_content` materializes. Exposed separately so a
+    CPU-side compositor can reuse the exact same box without allocating a
+    ``TiledPixelStore`` for a 160x90 tile (``allocate`` + resample costs
+    ~11 ms per side, measured 2026-10-29, while a whole filmstrip tile's CPU
+    budget is 5 ms — see ``cpu_thumbnail``). ``None`` for a degenerate size.
+    """
+    sw, sh = int(source_size[0]), int(source_size[1])
+    cw, ch = int(content_size[0]), int(content_size[1])
+    if sw <= 0 or sh <= 0 or cw <= 0 or ch <= 0:
+        return None
+    cover_r = max(cw / float(sw), ch / float(sh))
+    tw = max(1, int(round(sw * cover_r)))
+    th = max(1, int(round(sh * cover_r)))
+    return tw, th, max(0, (tw - cw) // 2), max(0, (th - ch) // 2)
+
+
 def cover_source_to_content(
     source,
     content_size: tuple[int, int],
@@ -123,12 +145,10 @@ def cover_source_to_content(
     """
     cw, ch = int(content_size[0]), int(content_size[1])
     sw, sh = int(source.width), int(source.height)
-    if sw <= 0 or sh <= 0 or cw <= 0 or ch <= 0:
+    box = cover_crop_box((sw, sh), (cw, ch))
+    if box is None:
         return source
-
-    cover_r = max(cw / float(sw), ch / float(sh))
-    tw = max(1, int(round(sw * cover_r)))
-    th = max(1, int(round(sh * cover_r)))
+    tw, th, left, top = box
 
     resample = _resample_for_method(resize_method)
     if (tw, th) == (sw, sh):
@@ -145,8 +165,6 @@ def cover_source_to_content(
         write_resampled_to_store(grown, source, tw, th, resample)
     if (tw, th) == (cw, ch):
         return grown
-    left = max(0, (tw - cw) // 2)
-    top = max(0, (th - ch) // 2)
     try:
         cropped = grown.crop((left, top, left + cw, top + ch))
     except Exception:

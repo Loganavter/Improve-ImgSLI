@@ -30,6 +30,19 @@ Preferred export/video direction:
 Image export preview/final and video preview/export differ by snapshot
 source and target surface, not by feature-specific scene assembly.
 
+**Thumbnail strip fast path (CPU).** Filmstrip tiles (~160x90) are the one
+snapshot consumer with a CPU composite: `ThumbnailService` prefers
+`video_snapshot_rendering.cpu_thumbnail.compose_thumbnail_cpu` when the
+snapshot carries no state the composite cannot reproduce
+(`thumbnail_needs_gpu` False — no magnifier/guides overlay, no filename
+overlay, no diff mode, RGB/R/G/B/L channel, two-image mode) and falls back to
+the GPU renderer on a composer miss. It reproduces the base shader's split /
+channel / divider semantics from the same pyramid proxies the GPU path uses,
+and the gate is fail-open: anything it cannot reproduce (including
+single-image preview, whose pane mapping a snapshot does not carry) keeps
+today's GPU tile. Pinned by
+`src/tabs/image_compare/tests/video/test_thumbnail_cpu_composite.py`.
+
 Snapshot prepare must **not** bake letterbox or feature padding into image
 pixels. Keep `TiledPixelStore` (or other unpadded sources) on the plan and
 express pads via `CanvasGeometry` / `overlay_clip_rect` + shader letterbox,
