@@ -515,6 +515,44 @@ def test_idle_fill_is_bounded_by_the_block_look_ahead(qapp):
     )
 
 
+def test_viewport_state_burst_coalesces_into_one_settle(qapp):
+    """A burst of layout commits must not queue a rep set per step.
+
+    Owner log 2026-10-29: opening the dialog laid out in several steps, and
+    an immediate refresh per ``viewportChangedState`` queued five waves of
+    8-9 reps for ~8 visible tiles (58 renders for a 361-frame recording).
+    The first commit still refreshes immediately (first paint), the rest of
+    the burst coalesces into the settle refresh.
+    """
+    from PySide6.QtTest import QTest
+
+    additional: list[list[int]] = []
+    service = SimpleNamespace(
+        set_visible_window=lambda indices: None,
+        generate_additional_thumbnails=(
+            lambda indices, fps=None: additional.append(list(indices))
+        ),
+        _generated_indices=set(),
+        _pending_indices=set(),
+    )
+    coordinator = _zoom_coordinator(
+        timeline_indices=[0, 1, 2], service=service, zoom=1.0, total_frames=20
+    )
+
+    for _ in range(4):
+        coordinator.on_timeline_viewport_state_changed(None)
+
+    assert len(additional) == 1, (
+        "the first layout commit refreshes immediately (first paint), the "
+        f"rest of the burst must not queue per step; got {len(additional)}"
+    )
+    QTest.qWait(400)
+    assert len(additional) == 2, (
+        "the burst coalesces into exactly one settle refresh; "
+        f"got {len(additional)} calls"
+    )
+
+
 def test_zoom_unreadable_keeps_scroll_cancel(qapp):
     """Z4 fail-open: timelines without a zoom scalar behave as before."""
     window: list[int] = [4, 8, 12]
