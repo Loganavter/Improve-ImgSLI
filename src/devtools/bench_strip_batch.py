@@ -34,7 +34,14 @@ Flags: ``--self-test`` (pure functions, no GPU), ``--cpu-only`` (planning +
 uniform packing only), ``--frames 17,32,64``, ``--tiles WxH``,
 ``--reference-samples K`` (hash-reference cap for a fast first look; the
 default hashes every tile), ``--varied-sources`` (worst-case per-frame pixel
-shift; informational — see below).
+shift; informational — see below), ``--renderer production`` (drive the app's
+``strip_window.build_window`` + ``render_window`` instead of this bench's own
+atlas widget; the local path stays the reference implementation).
+
+The ``--renderer production`` flag is the phase-1 integration seam: it plans a
+window through the production recording contract (``evaluate_at`` +
+``images_for``), renders it through the production one-pass renderer and
+compares the same slices against the same per-tile reference.
 
 Scope of one tile: the base-image array draw AND the divider overlay, both in
 that tile's own viewport/scissor inside the single pass. Layers come from the
@@ -1501,13 +1508,64 @@ def _clear_color():
     return QColor(0, 0, 0, 0)
 
 
+def _release_production_window(window) -> None:
+    """Cancel the consumed window and drop its planning graph.
+
+    ``cancel`` clears the module's live-window reference; the tiles' plans hold
+    ``TiledPixelStore``s, and a store still alive at interpreter shutdown fails
+    to unlink its spill file from ``__del__`` (noise, not a failure). GPU
+    resources go with the widget's ``releaseResources``.
+    """
+    from tabs.image_compare.services.video_snapshot_rendering.strip_window import (
+        cancel,
+    )
+
+    try:
+        cancel(window, "bench finished with this window")
+    except Exception:
+        pass
+
+
+def _grab_tiles(widget, rects, tile_w: int, tile_h: int):
+    """Grab the atlas once and slice every tile; returns hashes/bytes/scale."""
+    from engine.gpu.export_tiling import qimage_to_pil_rgba
+
+    readback_started = time.perf_counter()
+    qimage = widget.grabFramebuffer()
+    if qimage is None or qimage.isNull():
+        raise _NoDisplayError(
+            "strip pass: grabFramebuffer() returned a null image "
+            "(QRhi surface not present)"
+        )
+    image = qimage_to_pil_rgba(qimage)
+    readback_ms = (time.perf_counter() - readback_started) * 1000.0
+
+    scaled, scale = target_units(rects, image.size)
+    if scale != (1.0, 1.0):
+        # The reference tile is a logical 160x90 PIL render; comparing it to a
+        # device-pixel slice would be a silent resample, not an exactness test.
+        raise _PreconditionError(
+            f"atlas framebuffer is {image.size[0]}x{image.size[1]} for a "
+            f"{rects[-1][0] + tile_w}x{rects[-1][1] + tile_h} logical target "
+            f"(device-pixel ratio {scale[0]:.2f}x{scale[1]:.2f}). Run with "
+            "QT_SCALE_FACTOR=1: the bench compares 1:1 device pixels."
+        )
+    raw = image.tobytes("raw", "RGBA")
+    hashes = []
+    tile_bytes_list = []
+    for rect in scaled:
+        tile_bytes = slice_tile_bytes(raw, image.size, rect)
+        tile_bytes_list.append(tile_bytes)
+        hashes.append(hash_rgba(tile_bytes))
+    return hashes, tile_bytes_list, readback_ms, scale
+
+
 def run_batch_pass(tiles: list[TileFrame], cols: int, tile_service):
     """Render all tiles into one target; returns ``(tile_hashes, timings)``."""
     from engine.gpu.offscreen_canvas import (
         render_widget_frame,
         resize_and_show_offscreen_widget,
     )
-    from engine.gpu.export_tiling import qimage_to_pil_rgba
 
     _qt_app()
     tile_w = tiles[0].tile_w
@@ -1526,34 +1584,10 @@ def run_batch_pass(tiles: list[TileFrame], cols: int, tile_service):
     if widget._last_error:
         raise _NoDisplayError(widget._last_error)
 
-    readback_started = time.perf_counter()
-    qimage = widget.grabFramebuffer()
-    if qimage is None or qimage.isNull():
-        raise _NoDisplayError(
-            "batched strip pass: grabFramebuffer() returned a null image "
-            "(QRhi surface not present)"
-        )
-    image = qimage_to_pil_rgba(qimage)
-    readback_ms = (time.perf_counter() - readback_started) * 1000.0
-
     logical_rects = tile_rects(len(tiles), tile_w, tile_h, cols)
-    rects, scale = target_units(logical_rects, image.size)
-    if scale != (1.0, 1.0):
-        # The reference tile is a logical 160x90 PIL render; comparing it to a
-        # device-pixel slice would be a silent resample, not an exactness test.
-        raise _PreconditionError(
-            f"atlas framebuffer is {image.size[0]}x{image.size[1]} for a "
-            f"{logical_rects[-1][0] + tile_w}x{logical_rects[-1][1] + tile_h} "
-            f"logical target (device-pixel ratio {scale[0]:.2f}x{scale[1]:.2f}). "
-            "Run with QT_SCALE_FACTOR=1: the bench compares 1:1 device pixels."
-        )
-    raw = image.tobytes("raw", "RGBA")
-    hashes = []
-    tile_bytes_list = []
-    for rect in rects:
-        tile_bytes = slice_tile_bytes(raw, image.size, rect)
-        tile_bytes_list.append(tile_bytes)
-        hashes.append(hash_rgba(tile_bytes))
+    hashes, tile_bytes_list, readback_ms, scale = _grab_tiles(
+        widget, logical_rects, tile_w, tile_h
+    )
     try:
         array_capacity = (
             int(widget._resources.array_capacity) if widget._resources is not None else 0
@@ -1588,6 +1622,211 @@ def run_batch_pass(tiles: list[TileFrame], cols: int, tile_service):
         "array_capacity": array_capacity,
         "upload_skipped": upload_skipped,
     }
+
+
+# ---------------------------------------------------------------------------
+# Production renderer seam (phase 1): build_window + render_window
+# ---------------------------------------------------------------------------
+
+
+def _proxies(image1_path, image2_path, tile_w: int, tile_h: int):
+    """The shared proxy pair every frame resolves (the strip's real sources)."""
+    from PIL import Image
+
+    proxy1 = Image.open(image1_path).convert("RGBA").resize(
+        (int(tile_w), int(tile_h)), Image.Resampling.BICUBIC
+    )
+    proxy2 = Image.open(image2_path).convert("RGBA").resize(
+        (int(tile_w), int(tile_h)), Image.Resampling.BICUBIC
+    )
+    return proxy1, proxy2
+
+
+class _BenchRecording:
+    """The strip's recording contract, backed by this bench's own frame state.
+
+    ``build_window`` drives ``evaluate_at`` + ``images_for`` exactly as the
+    strip widget will drive the session recording, so the production path
+    exercises the real planning seam rather than a re-packed tile list.
+    """
+
+    def __init__(
+        self,
+        store,
+        image1_path,
+        image2_path,
+        proxy1,
+        proxy2,
+        *,
+        varied: bool = False,
+    ) -> None:
+        self._store = store
+        self._image1_path = image1_path
+        self._image2_path = image2_path
+        self._proxy1 = proxy1
+        self._proxy2 = proxy2
+        self._varied = bool(varied)
+
+    def evaluate_at(self, timestamp: float):
+        return _build_snapshot(
+            self._store, timestamp, self._image1_path, self._image2_path
+        )
+
+    def images_for(self, snapshot, tile_size):
+        if not self._varied:
+            return self._proxy1, self._proxy2
+        from PIL import ImageChops
+
+        index = int(round(float(snapshot.timestamp) * FPS))
+        width, height = int(tile_size[0]), int(tile_size[1])
+        frame1 = ImageChops.offset(
+            self._proxy1, (index * 7) % width, (index * 3) % height
+        )
+        frame2 = ImageChops.offset(
+            self._proxy2, (index * 5) % width, (index * 11) % height
+        )
+        return frame1, frame2
+
+
+def build_production_window(
+    store,
+    count: int,
+    tile_w: int,
+    tile_h: int,
+    image1_path,
+    image2_path,
+    *,
+    cols: int,
+    varied: bool = False,
+):
+    """``build_window`` for N blocks, with this bench's frame state/sources."""
+    from tabs.image_compare.services.video_snapshot_rendering.strip_window import (
+        StripBlockLayout,
+        build_window,
+    )
+
+    proxy1, proxy2 = _proxies(image1_path, image2_path, tile_w, tile_h)
+    recording = _BenchRecording(
+        store,
+        str(image1_path),
+        str(image2_path),
+        proxy1,
+        proxy2,
+        varied=varied,
+    )
+    return build_window(
+        recording,
+        0,
+        count,
+        tile_w,
+        tile_h,
+        request=_build_request(tile_w, tile_h),
+        layout=StripBlockLayout(
+            tile_size=(int(tile_w), int(tile_h)),
+            fps=FPS,
+            block_count=int(count),
+            cols=int(cols),
+        ),
+    )
+
+
+def _make_production_widget(window):
+    """A grab-only QRhiWidget whose whole ``render`` is the production pass."""
+    from PySide6.QtWidgets import QRhiWidget
+
+    from engine.gpu.offscreen_canvas import configure_offscreen_widget
+    from tabs.image_compare.services.video_snapshot_rendering.strip_window import (
+        render_window,
+    )
+
+    class _StripWindowWidget(QRhiWidget):
+        """Delegates the window's single pass to production ``render_window``."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            configure_offscreen_widget(self)
+            self._window = window
+            self._rhi = None
+            self._last_error: str | None = None
+
+        def render(self, command_buffer):
+            try:
+                rhi = self.rhi()
+                self._rhi = rhi
+                render_window(
+                    self.renderTarget(),
+                    self._window,
+                    rhi=rhi,
+                    tile_service=self._window.tile_service,
+                    command_buffer=command_buffer,
+                    # This surface is grab-only (WA_DontShowOnScreen): the
+                    # bottom-up framebuffer rule applies without a compositor.
+                    never_shown=True,
+                )
+            except BaseException as exc:  # Qt swallows render-override raises
+                self._last_error = f"render failed: {exc}"
+                raise
+
+        def releaseResources(self):
+            from tabs.image_compare.services.video_snapshot_rendering.strip_pass import (
+                release_window_resources,
+            )
+
+            rhi = self._rhi
+            self._rhi = None
+            if rhi is None:
+                # Never renderered: releasing by ``None`` would drop every
+                # RHI's resources, not just this widget's.
+                return
+            release_window_resources(rhi)
+
+    return _StripWindowWidget()
+
+
+def run_production_window(window):
+    """Render the window through production ``render_window``; hash the tiles."""
+    from engine.gpu.offscreen_canvas import (
+        render_widget_frame,
+        resize_and_show_offscreen_widget,
+    )
+
+    _qt_app()
+    widget = _make_production_widget(window)
+    resize_and_show_offscreen_widget(widget, (window.target_w, window.target_h))
+    _must_have_rhi(widget, "production strip window")
+
+    pass_started = time.perf_counter()
+    render_widget_frame(widget)
+    render_widget_frame(widget)
+    pass_ms = (time.perf_counter() - pass_started) * 1000.0
+    if widget._last_error:
+        raise _NoDisplayError(widget._last_error)
+
+    hashes, tile_bytes_list, readback_ms, scale = _grab_tiles(
+        widget, window.rects(), window.tile_w, window.tile_h
+    )
+    timings = {
+        "pass_ms": pass_ms,
+        "readback_ms": readback_ms,
+        "rows": window.rows,
+        "atlas": (window.target_w, window.target_h),
+        "dpr_scale": scale,
+        "layers": [
+            (int(tile.index), int(tile.layer1), int(tile.layer2))
+            for tile in window.tiles
+        ],
+        "divider_tiles": sorted(
+            index for index, tile in enumerate(window.tiles) if tile.divider
+        ),
+        "array_capacity": window.layer_count,
+        "upload_skipped": 0,
+    }
+    try:
+        widget.close()
+        widget.deleteLater()
+    except Exception:
+        pass
+    return hashes, tile_bytes_list, timings
 
 
 # ---------------------------------------------------------------------------
@@ -1838,6 +2077,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--self-test", action="store_true", help="pure-function checks, no GPU")
     parser.add_argument("--cpu-only", action="store_true", help="planning + uniform packing only")
+    parser.add_argument(
+        "--renderer",
+        choices=("local", "production"),
+        default="local",
+        help=(
+            "local = this bench's own atlas widget (the phase-0 reference "
+            "implementation); production = the app module "
+            "video_snapshot_rendering.strip_window build_window + render_window"
+        ),
+    )
     parser.add_argument("--frames", default=",".join(str(n) for n in DEFAULT_FRAMES))
     parser.add_argument("--tiles", default=f"{DEFAULT_TILE[0]}x{DEFAULT_TILE[1]}")
     parser.add_argument("--reference-samples", type=int, default=0, help="hash only the first K reference tiles (0 = all)")
@@ -1882,6 +2131,10 @@ def main(argv: list[str] | None = None) -> int:
         image1_path, image2_path = make_sources(workdir)
 
         rows = []
+        # The production renderer plans through the app's own recording seam,
+        # so it needs the store the plan builder reads (same store shape
+        # ``build_tiles`` builds internally for the local path).
+        production_store = _build_store() if args.renderer == "production" else None
         # One warm-up plan before any timing: source decode + first plan
         # compile are one-time costs that would otherwise land on N=17 and
         # read as "planning got 10x cheaper with more tiles".
@@ -1899,34 +2152,76 @@ def main(argv: list[str] | None = None) -> int:
         for count in frames:
             if not args.quiet:
                 print(f"\nN={count}")
-            tiles, plan_ms = build_tiles(
-                count,
-                tile_w,
-                tile_h,
-                image1_path,
-                image2_path,
-                verbose=not args.quiet,
-                varied_sources=args.varied_sources,
-            )
-            pack_ms, tile_service = pack_tiles(tiles)
+            if args.renderer == "production":
+                window = build_production_window(
+                    production_store,
+                    count,
+                    tile_w,
+                    tile_h,
+                    image1_path,
+                    image2_path,
+                    cols=_cols_for(count),
+                    varied=args.varied_sources,
+                )
+                tiles = list(window.tiles)
+                plan_ms = window.build_ms
+                pack_ms = 0.0
+                placeholders = window.placeholder_reasons
+            else:
+                tiles, plan_ms = build_tiles(
+                    count,
+                    tile_w,
+                    tile_h,
+                    image1_path,
+                    image2_path,
+                    verbose=not args.quiet,
+                    varied_sources=args.varied_sources,
+                )
+                pack_ms, tile_service = pack_tiles(tiles)
+                placeholders = {}
             if args.cpu_only:
                 if not args.quiet:
-                    print(
-                        f"  pack {len(tiles)} tile uniforms+instances in {pack_ms:.2f} ms "
-                        f"(block {_uniform_block_size()}B, stride {UNIFORM_STRIDE}B, "
-                        f"instance {len(tiles[0].instance)}B); layers "
-                        f"{[(t.index, t.layer1, t.layer2) for t in tiles[:4]]}"
-                        f"{'...' if len(tiles) > 4 else ''}"
-                    )
+                    if args.renderer == "production":
+                        print(
+                            f"  production window: {len(tiles)} tiles planned + "
+                            f"packed in {plan_ms:.2f} ms "
+                            f"(block {_uniform_block_size()}B, stride "
+                            f"{UNIFORM_STRIDE}B, instance "
+                            f"{len(tiles[0].instance)}B); placeholders "
+                            f"{len(placeholders)}; layers "
+                            f"{[(t.index, t.layer1, t.layer2) for t in tiles[:4]]}"
+                            f"{'...' if len(tiles) > 4 else ''}"
+                        )
+                    else:
+                        print(
+                            f"  pack {len(tiles)} tile uniforms+instances in {pack_ms:.2f} ms "
+                            f"(block {_uniform_block_size()}B, stride {UNIFORM_STRIDE}B, "
+                            f"instance {len(tiles[0].instance)}B); layers "
+                            f"{[(t.index, t.layer1, t.layer2) for t in tiles[:4]]}"
+                            f"{'...' if len(tiles) > 4 else ''}"
+                        )
                 rows.append((count, plan_ms, pack_ms, None, None, None))
+                if args.renderer == "production":
+                    _release_production_window(window)
+                    window = None
+                    tiles = None
                 continue
+            if placeholders:
+                raise _PreconditionError(
+                    f"the production window left placeholder tiles {sorted(placeholders)}: "
+                    "the exactness matrix needs every block planned (a placeholder "
+                    "is a planning failure, not a rendering result)"
+                )
 
             reference, reference_ms = render_reference_tiles(
                 tiles, args.reference_samples or None
             )
-            batch_hashes, batch_bytes, timings = run_batch_pass(
-                tiles, cols=_cols_for(count), tile_service=tile_service
-            )
+            if args.renderer == "production":
+                batch_hashes, batch_bytes, timings = run_production_window(window)
+            else:
+                batch_hashes, batch_bytes, timings = run_batch_pass(
+                    tiles, cols=_cols_for(count), tile_service=tile_service
+                )
             matches = sum(
                 1
                 for index, (ref_hash, _dbg, _raw) in enumerate(reference)
@@ -2013,6 +2308,10 @@ def main(argv: list[str] | None = None) -> int:
                     len(reference),
                 )
             )
+            if args.renderer == "production":
+                _release_production_window(window)
+                window = None
+                tiles = None
 
         print()
         if args.cpu_only:
