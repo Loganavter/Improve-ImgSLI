@@ -213,8 +213,19 @@ def test_gate_flags_overlay_and_filename_state():
     assert thumbnail_needs_gpu(
         _snap(states={"magnifier": MagnifierWidgetState(enabled=True)})
     ) is True
+    # Guides are a setting, not paint geometry: the pass needs runtime
+    # ``_guide_sets`` that only a magnifier overlay produces, so an enabled
+    # guides state with no magnifier draws nothing and must compose.
     assert thumbnail_needs_gpu(
         _snap(states={"guides": GuidesWidgetState(enabled=True)})
+    ) is False
+    assert thumbnail_needs_gpu(
+        _snap(
+            states={
+                "guides": GuidesWidgetState(enabled=True),
+                "magnifier": MagnifierWidgetState(enabled=True),
+            }
+        )
     ) is True
     # A disabled magnifier with its default instance model is COMPOSABLE:
     # the live canvas always carries that model while the loupe paints
@@ -361,7 +372,10 @@ def test_composable_snapshot_never_touches_the_gpu_renderer(qapp):
 def test_overlay_snapshot_never_touches_the_composer(qapp):
     for states in (
         {"magnifier": MagnifierWidgetState(enabled=True)},
-        {"guides": GuidesWidgetState(enabled=True)},
+        {
+            "guides": GuidesWidgetState(enabled=True),
+            "magnifier": MagnifierWidgetState(enabled=True),
+        },
     ):
         harness = _Harness(qapp).wire(composer_raises=True)
 
