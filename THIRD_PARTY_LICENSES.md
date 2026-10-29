@@ -219,7 +219,7 @@ runtime documentation and FFmpeg project for details.
 ## Questions
 
 For licensing questions about Improve-ImgSLI itself, see [LICENSE](LICENSE) and
-the project homepage: https://github.com/Loganavter/Improve-ImgSLI
+the project homepage: https://github.com/Loganavter/BlinkTable
 
 This file is provided for attribution and compliance convenience. It is not
 legal advice.

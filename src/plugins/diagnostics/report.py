@@ -19,7 +19,7 @@ from . import redact
 SCHEMA_VERSION = 1
 
 #: The prefilled GitHub issue target (same project as the app).
-ISSUE_URL_BASE = "https://github.com/Loganavter/Improve-ImgSLI/issues/new"
+ISSUE_URL_BASE = "https://github.com/Loganavter/BlinkTable/issues/new"
 
 #: Any payload key with one of these names is dropped defensively. The schema
 #: itself has no such field (asserted by tests) — this is defence in depth.

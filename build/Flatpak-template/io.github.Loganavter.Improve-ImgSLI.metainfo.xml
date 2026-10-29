@@ -33,10 +33,10 @@
       BlinkTable is free software under the GPL-3.0-or-later License. It uses PySide6 and Qt 6 under the LGPL-3.0-or-later; see LICENSE and THIRD_PARTY_LICENSES.md in the source repository for the full list.
     </p>
   </description>
-  <url type="homepage">https://github.com/Loganavter/Improve-ImgSLI</url>
-  <url type="bugtracker">https://github.com/Loganavter/Improve-ImgSLI/issues</url>
-  <url type="vcs-browser">https://github.com/Loganavter/Improve-ImgSLI</url>
-  <url type="help">https://github.com/Loganavter/Improve-ImgSLI/blob/main/docs/dev/README.md</url>
+  <url type="homepage">https://github.com/Loganavter/BlinkTable</url>
+  <url type="bugtracker">https://github.com/Loganavter/BlinkTable/issues</url>
+  <url type="vcs-browser">https://github.com/Loganavter/BlinkTable</url>
+  <url type="help">https://github.com/Loganavter/BlinkTable/blob/main/docs/dev/README.md</url>
   <launchable type="desktop-id">io.github.Loganavter.Improve-ImgSLI.desktop</launchable>
   <screenshots>
     <screenshot type="default">
@@ -66,7 +66,7 @@
   <content_rating type="oars-1.1"/>
   <releases>
     <release version="11.0.0" date="2026-10-22">
-      <url>https://github.com/Loganavter/Improve-ImgSLI/releases/tag/v11.0.0</url>
+      <url>https://github.com/Loganavter/BlinkTable/releases/tag/v11.0.0</url>
       <description>
         <p>11.0.0 adds Image Gallery with AI-assisted triage, a local MCP server for agents, and a global Interface Scale; keyboard navigation now reaches the rest of the app, and the canvas, Multi Compare, the video editor and help all get a substantial update.</p>
         <ul>
@@ -83,7 +83,7 @@
       </description>
     </release>
     <release version="10.0.1" date="2026-07-20">
-      <url>https://github.com/Loganavter/Improve-ImgSLI/releases/tag/v10.0.1</url>
+      <url>https://github.com/Loganavter/BlinkTable/releases/tag/v10.0.1</url>
       <description>
         <p>Fix multiple inheritance crashes in UI and update to sli-ui-toolkit 3.1.9</p>
       </description>

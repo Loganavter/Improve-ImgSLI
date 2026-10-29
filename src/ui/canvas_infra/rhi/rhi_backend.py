@@ -41,11 +41,11 @@ _vulkan_rejected_for_process = False
 
 
 # User-facing ticket URL when every probed API is too old / missing.
-RHI_SUPPORT_ISSUES_URL = "https://github.com/Loganavter/Improve-ImgSLI/issues/new"
+RHI_SUPPORT_ISSUES_URL = "https://github.com/Loganavter/BlinkTable/issues/new"
 # Last public release before hybrid CPU–GPU canvas (v8.1.0). CPU paint path.
 RHI_LEGACY_CPU_RELEASE = "v7.9.0"
 RHI_LEGACY_CPU_RELEASE_URL = (
-    "https://github.com/Loganavter/Improve-ImgSLI/releases/tag/v7.9.0"
+    "https://github.com/Loganavter/BlinkTable/releases/tag/v7.9.0"
 )
 
 # Soft: requested API failed, another works. Hard: nothing usable left.

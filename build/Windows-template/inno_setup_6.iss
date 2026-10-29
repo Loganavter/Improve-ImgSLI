@@ -7,7 +7,7 @@
 #define MyAppName "BlinkTable"
 #define MyAppVersion "11.0.0"
 #define MyAppPublisher "Loganavter"
-#define MyAppURL "https://github.com/Loganavter/Improve-ImgSLI"
+#define MyAppURL "https://github.com/Loganavter/BlinkTable"
 #define MyAppExeName "BlinkTable.exe"
 #define MyAppSetupName "BlinkTable_Setup_v11.0.0"
 
