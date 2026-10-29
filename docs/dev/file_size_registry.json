@@ -85,6 +85,16 @@
       }
     },
     {
+      "path": "src/devtools/bench_strip_batch.py",
+      "limit": 500,
+      "marker": "Audit-Meta:",
+      "raw": "pattern=instrument reason=\"phase-0 bench: CPU planning + one-pass atlas + exactness harness + self-test are one measurement; splitting them would let the two halves drift\"",
+      "parsed": {
+        "pattern": "instrument",
+        "reason": "phase-0 bench: CPU planning + one-pass atlas + exactness harness + self-test are one measurement; splitting them would let the two halves drift"
+      }
+    },
+    {
       "path": "src/devtools/capture_surface.py",
       "limit": 500,
       "marker": "Audit-Meta:",
