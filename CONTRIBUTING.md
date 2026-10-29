@@ -17,7 +17,7 @@ Prerequisites:
 
 Clone and run:
 ```bash
-git clone https://github.com/Loganavter/Improve-ImgSLI.git
+git clone https://github.com/Loganavter/BlinkTable.git
 cd Improve-ImgSLI
 chmod +x launcher.sh
 ./launcher.sh run
@@ -131,7 +131,7 @@ chmod +x launcher.sh
 
 Windows (PowerShell or bash via Git Bash):
 ```powershell
-git clone https://github.com/Loganavter/Improve-ImgSLI.git
+git clone https://github.com/Loganavter/BlinkTable.git
 cd Improve-ImgSLI
 bash launcher.sh run
 ```
@@ -250,7 +250,7 @@ When you add or modify features:
 
 Thanks to everyone who has helped shape BlinkTable over the years. A few specific shout-outs:
 
-- [@johnpetersa19](https://github.com/johnpetersa19) — for cleaning up the README Markdown in [PR #18](https://github.com/Loganavter/Improve-ImgSLI/pull/18).
+- [@johnpetersa19](https://github.com/johnpetersa19) — for cleaning up the README Markdown in [PR #18](https://github.com/Loganavter/BlinkTable/pull/18).
 - [@Anduin9527](https://github.com/Anduin9527/Improve-ImgSLI) — the GUI-refresh idea introduced around v3–v4 was borrowed from their fork.
 
 ## License

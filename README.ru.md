@@ -5,9 +5,9 @@
 <h1 align="center">BlinkTable</h1>
 
 <p align="center">
-  <a href="https://github.com/Loganavter/Improve-ImgSLI/releases/latest"><img src="https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square"></a>
+  <a href="https://github.com/Loganavter/BlinkTable/releases/latest"><img src="https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square"></a>
-  <a href="https://github.com/Loganavter/Improve-ImgSLI/releases"><img src="https://img.shields.io/github/downloads/Loganavter/Improve-ImgSLI/total?style=flat-square" alt="GitHub Downloads"></a>
+  <a href="https://github.com/Loganavter/BlinkTable/releases"><img src="https://img.shields.io/github/downloads/Loganavter/Improve-ImgSLI/total?style=flat-square" alt="GitHub Downloads"></a>
   <a href="https://flathub.org/apps/details/io.github.Loganavter.Improve-ImgSLI"><img src="https://img.shields.io/flathub/downloads/io.github.Loganavter.Improve-ImgSLI?style=flat-square" alt="Flathub Downloads"></a>
 </p>
 
@@ -86,7 +86,7 @@ Image Compare ставит два изображения рядом. Multi Compa
 
 | Платформа | Как |
 |---|---|
-| Windows | установщик из [Releases](https://github.com/Loganavter/Improve-ImgSLI/releases/latest) |
+| Windows | установщик из [Releases](https://github.com/Loganavter/BlinkTable/releases/latest) |
 | Linux (Flatpak) | `flatpak install io.github.Loganavter.Improve-ImgSLI`, затем `flatpak run io.github.Loganavter.Improve-ImgSLI` |
 | Linux (AUR) | `yay -S improve-imgsli` |
 | Из исходников | `git clone … && cd Improve-ImgSLI && ./launcher.sh run` |
