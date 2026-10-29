@@ -9,7 +9,7 @@ pkgrel=1
 _piqver=0.8.0
 pkgdesc="Image comparison tool with magnifying glass feature"
 arch=('x86_64')
-url="https://github.com/Loganavter/Improve-ImgSLI"
+url="https://github.com/Loganavter/BlinkTable"
 license=('GPL-3.0-or-later' 'OFL-1.1')
 depends=(
   'ffmpeg'
@@ -38,7 +38,7 @@ makedepends=(
   'python-wheel'
 )
 options=(!debug)
-source=("$pkgname-$pkgver.tar.gz::https://github.com/Loganavter/Improve-ImgSLI/archive/refs/tags/v$pkgver.tar.gz"
+source=("$pkgname-$pkgver.tar.gz::https://github.com/Loganavter/BlinkTable/archive/refs/tags/v$pkgver.tar.gz"
         "piq-$_piqver-py3-none-any.whl::https://files.pythonhosted.org/packages/71/49/e198c355bc01a1bb3aff5d41a8fe7c8a0502ad7a4063865d2c9dd270cb0f/piq-$_piqver-py3-none-any.whl")
 
 # NOTE (release step): the first sum is the tagged source archive and must be

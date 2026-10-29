@@ -5,9 +5,9 @@
 <h1 align="center">BlinkTable</h1>
 
 <p align="center">
-  <a href="https://github.com/Loganavter/BlinkTable/releases/latest"><img src="https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square"></a>
-  <a href="https://github.com/Loganavter/BlinkTable/releases"><img src="https://img.shields.io/github/downloads/Loganavter/Improve-ImgSLI/total?style=flat-square" alt="GitHub Downloads"></a>
+  <a href="https://github.com/Loganavter/BlinkTable/releases/latest"><img src="https://img.shields.io/github/v/release/Loganavter/BlinkTable?style=flat-square"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Loganavter/BlinkTable?style=flat-square"></a>
+  <a href="https://github.com/Loganavter/BlinkTable/releases"><img src="https://img.shields.io/github/downloads/Loganavter/BlinkTable/total?style=flat-square" alt="GitHub Downloads"></a>
   <a href="https://flathub.org/apps/details/io.github.Loganavter.Improve-ImgSLI"><img src="https://img.shields.io/flathub/downloads/io.github.Loganavter.Improve-ImgSLI?style=flat-square" alt="Flathub Downloads"></a>
 </p>
 
@@ -163,4 +163,4 @@ PySide6/Qt под LGPL-3.0-or-later, перечислены в
 
 ## История звёзд
 
-![Star History Chart](https://api.star-history.com/svg?repos=Loganavter/Improve-ImgSLI&type=Timeline)
+![Star History Chart](https://api.star-history.com/svg?repos=Loganavter/BlinkTable&type=Timeline)
