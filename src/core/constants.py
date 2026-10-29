@@ -5,7 +5,7 @@ class AppConstants:
     # runtime, e.g. for QApplication.setApplicationVersion and for the
     # last-seen-version check in core.bootstrap that offers a one-time
     # stale-cache purge notice after upgrading from an untracked version.
-    APP_VERSION = "11.0.0"
+    APP_VERSION = "11.0.1"
 
     MIN_NAME_LENGTH_LIMIT = 10
     MAX_NAME_LENGTH_LIMIT = 150
@@ -55,9 +55,6 @@ class AppConstants:
     # bound does not apply — libvips streams strips straight to the memmap
     # without a full-frame decode buffer.
     MAX_SUPPORTED_IMAGE_DIMENSION = 65536
-    # Soft ceiling for still-image export. Above this we warn that the path is
-    # untested; we do not block or silently clamp output / native canvas size.
-    EXPORT_TESTED_MAX_EDGE = 16384
     # Host tile size for TiledPixelStore (GEGL-style always-tiled storage).
     # Separate from GPU live tile extent (8192 in rhi_renderer/resources.py).
     PIXEL_TILE_SIZE = 512

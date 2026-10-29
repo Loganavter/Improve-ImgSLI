@@ -1,15 +1,16 @@
 # Maintainer: Boradorka
 # Co-maintainer: Nebulosa
 
-# Product name is BlinkTable (src/core/log_names.py APP_NAME); the repo and
-# AUR source stay 'Improve-ImgSLI' because that is the GitHub archive name.
+# Product name is BlinkTable (src/core/log_names.py APP_NAME); the AUR package
+# name is the product name in lower case, and the source archive is the GitHub
+# tag archive of the repository (BlinkTable since the 2026-10-29 rename).
 pkgname=blinktable
-pkgver=11.0.0
+pkgver=11.0.1
 pkgrel=1
 _piqver=0.8.0
 pkgdesc="Image comparison tool with magnifying glass feature"
 arch=('x86_64')
-url="https://github.com/Loganavter/Improve-ImgSLI"
+url="https://github.com/Loganavter/BlinkTable"
 license=('GPL-3.0-or-later' 'OFL-1.1')
 depends=(
   'ffmpeg'
@@ -38,7 +39,7 @@ makedepends=(
   'python-wheel'
 )
 options=(!debug)
-source=("$pkgname-$pkgver.tar.gz::https://github.com/Loganavter/Improve-ImgSLI/archive/refs/tags/v$pkgver.tar.gz"
+source=("$pkgname-$pkgver.tar.gz::https://github.com/Loganavter/BlinkTable/archive/refs/tags/v$pkgver.tar.gz"
         "piq-$_piqver-py3-none-any.whl::https://files.pythonhosted.org/packages/71/49/e198c355bc01a1bb3aff5d41a8fe7c8a0502ad7a4063865d2c9dd270cb0f/piq-$_piqver-py3-none-any.whl")
 
 # NOTE (release step): the first sum is the tagged source archive and must be
@@ -48,11 +49,11 @@ sha256sums=('fb0b29f4fd22d6f1d55bc1b28d223a4752d56d53f9c827fdd51070fecafcde59'
 
 prepare() {
   #Making launching app more secure
-  sed -i "s|^Exec=$pkgname|Exec=/usr/bin/$pkgname|" "$srcdir"/Improve-ImgSLI-$pkgver/build/AUR-template/$pkgname.desktop
+  sed -i "s|^Exec=$pkgname|Exec=/usr/bin/$pkgname|" "$srcdir"/BlinkTable-$pkgver/build/AUR-template/$pkgname.desktop
 }
 
 package() {
-  cd "$srcdir/Improve-ImgSLI-$pkgver"
+  cd "$srcdir/BlinkTable-$pkgver"
 
   # Install launcher, desktop file, icon, and license
   install -vDm 755 build/AUR-template/launcher.sh "$pkgdir/usr/bin/$pkgname"

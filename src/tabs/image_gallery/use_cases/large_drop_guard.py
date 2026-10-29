@@ -6,9 +6,8 @@ AI calls at once. That is exactly the case the user asked to gate: ask first
 with a warning window offering "Confirm and don't ask again" / "Confirm" /
 "Cancel".
 
-Reuses the shared ``AppMessageDialog`` (warning chrome + CSD) and mirrors the
-suppress-flag flow of ``shared/untested_export_resolution.py``; the flag lives
-in the gallery AI settings group (``AiSettingsStore``).
+Reuses the shared ``AppMessageDialog`` (warning chrome + CSD); the suppress
+flag lives in the gallery AI settings group (``AiSettingsStore``).
 """
 
 from __future__ import annotations

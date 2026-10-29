@@ -68,7 +68,7 @@ Focused tests: `env QT_QPA_PLATFORM=offscreen pytest -q tests/<area>/…` — se
 - New workspace mode = new `src/tabs/<name>/` implementing the tab contract — not logic stuffed into `core/`.
 - Rendering / export / video snapshot parity is product behavior, not optional polish.
 - User-visible strings and Help topics update with the feature ([RESOURCES_I18N.md](RESOURCES_I18N.md), [HELP_SYSTEM.md](HELP_SYSTEM.md)).
-- Size limit is **decode-backend-scoped**: when libvips can stream a file's format (`pyvips_can_stream` in `src/shared/image_processing/progressive_loader.py`) there is **no bound** — strips go straight into the `TiledPixelStore` memmap. Only the PIL/imagecodecs full-frame fallback (including the stream-failure path) applies **65536 px** on a side (`AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION`), because that codec still materializes a full frame once; spill into `TiledPixelStore` is strip-written (no second full copy). Still-image export above **16384 px** on a side is allowed but shows an untested-resolution warning (Image Compare and Multi Compare).
+- Size limit is **decode-backend-scoped**: when libvips can stream a file's format (`pyvips_can_stream` in `src/shared/image_processing/progressive_loader.py`) there is **no bound** — strips go straight into the `TiledPixelStore` memmap. Only the PIL/imagecodecs full-frame fallback (including the stream-failure path) applies **65536 px** on a side (`AppConstants.MAX_SUPPORTED_IMAGE_DIMENSION`), because that codec still materializes a full frame once; spill into `TiledPixelStore` is strip-written (no second full copy).
 
 ### Where to look
 

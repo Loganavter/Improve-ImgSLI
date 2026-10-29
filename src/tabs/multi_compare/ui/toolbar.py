@@ -162,7 +162,8 @@ class MultiCompareToolbar(ThemedWidget, QWidget):
             variant="surface",
             background_color=accent,
             parent=self,
-            # quick_save can pop a modal confirm-untested-resolution dialog.
+            # quick_save starts the export, so the ripple still has to settle
+            # first (the button must not look pressed after the click).
             defer_click=DEFER_CLICK_AWAIT_RIPPLE,
         )
         self.btn_quick_save.setIconSizePx(24)

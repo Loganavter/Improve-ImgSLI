@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from types import MethodType, SimpleNamespace
 
-import pytest
 from PySide6.QtWidgets import QDialog
 
 from tabs.image_compare.presenters.export_presenter import ExportPresenter
@@ -79,9 +78,6 @@ def _fake_presenter(*, has_images: bool = True):
         main_window_app=None,
         _set_export_favorite_dir=lambda _path: None,
         _tr=lambda key, default=None: default or key,
-        _tr_export=lambda key, default=None: default or key,
-        _untested_export_suppressed=lambda: True,
-        _suppress_untested_export_warning=lambda: None,
     )
     fake._open_export_dialog = MethodType(ExportPresenter._open_export_dialog, fake)
     fake._start_save_after_dialog = MethodType(
@@ -106,7 +102,7 @@ def _options() -> dict:
     }
 
 
-def test_save_result_hands_the_dialog_a_finished_callback_and_returns(monkeypatch):
+def test_save_result_hands_the_dialog_a_finished_callback_and_returns():
     """``save_result`` must not block: nothing is exported until the callback."""
     fake, seen = _fake_presenter()
 
@@ -123,11 +119,7 @@ def test_save_result_hands_the_dialog_a_finished_callback_and_returns(monkeypatc
     assert seen.messages == []
 
 
-def test_accepted_continues_with_the_dialog_options(monkeypatch):
-    monkeypatch.setattr(
-        "shared.untested_export_resolution.confirm_untested_export_resolution",
-        lambda *a, **kw: True,
-    )
+def test_accepted_continues_with_the_dialog_options():
     fake, seen = _fake_presenter()
     opts = _options()
 
@@ -144,12 +136,8 @@ def test_accepted_continues_with_the_dialog_options(monkeypatch):
     assert seen.messages == []
 
 
-def test_cancel_writes_nothing(monkeypatch):
+def test_cancel_writes_nothing():
     """Cancel = no validation, no composition, no save worker, no toast."""
-    monkeypatch.setattr(
-        "shared.untested_export_resolution.confirm_untested_export_resolution",
-        lambda *a, **kw: pytest.fail("cancel must not prompt about resolution"),
-    )
     fake, seen = _fake_presenter()
 
     ExportPresenter.save_result(fake)

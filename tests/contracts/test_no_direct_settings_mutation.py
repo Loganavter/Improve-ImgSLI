@@ -34,8 +34,7 @@ Store-unique-root discipline (same as the sibling): the chain segment before
 root must be a Store-derived transient / a ``settings`` alias bound to such
 a chain. Generic ``self.settings = ...`` (dialogs, ``QSettings`` holders),
 ``WorkerStoreSnapshot.__init__``, and bare ``settings`` function params
-(e.g. ``shared/export_warning_state.py`` helpers taking a detached
-``SettingsState``) do NOT flag.
+(helpers taking a detached ``SettingsState``) do NOT flag.
 
 Exemptions:
 
@@ -113,14 +112,13 @@ ALLOWLIST: frozenset[str] = frozenset({
     "src/plugins/settings/manager.py:525",
     "src/plugins/settings/manager.py:528",
     "src/plugins/settings/manager.py:531",
-    "src/plugins/settings/manager.py:534",
+    "src/plugins/settings/manager.py:532",
     "src/plugins/settings/manager.py:535",
     "src/plugins/settings/manager.py:538",
     "src/plugins/settings/manager.py:541",
     "src/plugins/settings/manager.py:544",
     "src/plugins/settings/manager.py:547",
     "src/plugins/settings/manager.py:550",
-    "src/plugins/settings/manager.py:553",
     "src/tabs/image_compare/plugins/video_editor/presenter_parts/output_paths.py:108",
     "src/tabs/image_compare/services/image_export/state.py:115",
     "src/tabs/image_compare/services/image_export/state.py:116",
@@ -134,18 +132,18 @@ ALLOWLIST: frozenset[str] = frozenset({
     "src/tabs/image_compare/services/image_export/state.py:136",
     "src/tabs/image_compare/services/image_export/state.py:137",
     "src/tabs/image_compare/services/image_export/state.py:142",
+    "src/tabs/multi_compare/use_cases/export.py:65",
+    "src/tabs/multi_compare/use_cases/export.py:67",
+    "src/tabs/multi_compare/use_cases/export.py:68",
+    "src/tabs/multi_compare/use_cases/export.py:69",
+    "src/tabs/multi_compare/use_cases/export.py:71",
+    "src/tabs/multi_compare/use_cases/export.py:73",
+    "src/tabs/multi_compare/use_cases/export.py:75",
+    "src/tabs/multi_compare/use_cases/export.py:77",
+    "src/tabs/multi_compare/use_cases/export.py:79",
     "src/tabs/multi_compare/use_cases/export.py:81",
-    "src/tabs/multi_compare/use_cases/export.py:83",
-    "src/tabs/multi_compare/use_cases/export.py:84",
     "src/tabs/multi_compare/use_cases/export.py:85",
-    "src/tabs/multi_compare/use_cases/export.py:87",
-    "src/tabs/multi_compare/use_cases/export.py:89",
-    "src/tabs/multi_compare/use_cases/export.py:91",
     "src/tabs/multi_compare/use_cases/export.py:93",
-    "src/tabs/multi_compare/use_cases/export.py:95",
-    "src/tabs/multi_compare/use_cases/export.py:97",
-    "src/tabs/multi_compare/use_cases/export.py:101",
-    "src/tabs/multi_compare/use_cases/export.py:109",
     "src/ui/canvas_infra/rhi/rhi_fallback_notice.py:72",
 })
 _MIGRATION_HINT = (

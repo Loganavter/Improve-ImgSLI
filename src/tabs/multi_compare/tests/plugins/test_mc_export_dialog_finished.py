@@ -17,7 +17,6 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QDialog
 
@@ -123,10 +122,6 @@ def _options(tmp_path) -> dict:
 
 
 def test_save_request_opens_dialog_with_finished_callback(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "shared.untested_export_resolution.confirm_untested_export_resolution",
-        lambda *a, **kw: True,
-    )
     controller, seen = _controller(tmp_path, monkeypatch)
 
     controller._on_save_requested()
@@ -141,10 +136,6 @@ def test_save_request_opens_dialog_with_finished_callback(tmp_path, monkeypatch)
 
 
 def test_accepted_composes_and_saves_with_dialog_options(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "shared.untested_export_resolution.confirm_untested_export_resolution",
-        lambda *a, **kw: True,
-    )
     controller, seen = _controller(tmp_path, monkeypatch)
     options = _options(tmp_path)
 
@@ -160,10 +151,6 @@ def test_accepted_composes_and_saves_with_dialog_options(tmp_path, monkeypatch):
 
 
 def test_cancel_composes_nothing_and_saves_nothing(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "shared.untested_export_resolution.confirm_untested_export_resolution",
-        lambda *a, **kw: pytest.fail("cancel must not prompt about resolution"),
-    )
     controller, seen = _controller(tmp_path, monkeypatch)
 
     controller._on_save_requested()
