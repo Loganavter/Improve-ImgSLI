@@ -5,9 +5,9 @@
 <h1 align="center">BlinkTable</h1>
 
 <p align="center">
-  <a href="https://github.com/Loganavter/Improve-ImgSLI/releases/latest"><img src="https://img.shields.io/github/v/release/Loganavter/Improve-ImgSLI?style=flat-square"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/Loganavter/Improve-ImgSLI?style=flat-square"></a>
-  <a href="https://github.com/Loganavter/Improve-ImgSLI/releases"><img src="https://img.shields.io/github/downloads/Loganavter/Improve-ImgSLI/total?style=flat-square" alt="GitHub Downloads"></a>
+  <a href="https://github.com/Loganavter/BlinkTable/releases/latest"><img src="https://img.shields.io/github/v/release/Loganavter/BlinkTable?style=flat-square"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Loganavter/BlinkTable?style=flat-square"></a>
+  <a href="https://github.com/Loganavter/BlinkTable/releases"><img src="https://img.shields.io/github/downloads/Loganavter/BlinkTable/total?style=flat-square" alt="GitHub Downloads"></a>
   <a href="https://flathub.org/apps/details/io.github.Loganavter.Improve-ImgSLI"><img src="https://img.shields.io/flathub/downloads/io.github.Loganavter.Improve-ImgSLI?style=flat-square" alt="Flathub Downloads"></a>
 </p>
 
@@ -82,7 +82,7 @@ method and canvas-layer count, and keyboard reachability is measured
 
 | Platform | How |
 |---|---|
-| Windows | latest installer from [Releases](https://github.com/Loganavter/Improve-ImgSLI/releases/latest) |
+| Windows | latest installer from [Releases](https://github.com/Loganavter/BlinkTable/releases/latest) |
 | Linux (Flatpak) | `flatpak install io.github.Loganavter.Improve-ImgSLI` then `flatpak run io.github.Loganavter.Improve-ImgSLI` |
 | Linux (AUR) | `yay -S improve-imgsli` |
 | From source | `git clone … && cd Improve-ImgSLI && ./launcher.sh run` |
@@ -156,4 +156,4 @@ PySide6/Qt under LGPL-3.0-or-later, are listed in
 
 ## Star history
 
-![Star History Chart](https://api.star-history.com/svg?repos=Loganavter/Improve-ImgSLI&type=Timeline)
+![Star History Chart](https://api.star-history.com/svg?repos=Loganavter/BlinkTable&type=Timeline)
