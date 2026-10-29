@@ -65,6 +65,12 @@
   </developer>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="11.0.1" date="2026-10-29">
+      <url>https://github.com/Loganavter/BlinkTable/releases/tag/v11.0.1</url>
+      <description>
+        <p>11.0.1 removes the "untested export size" warning from every export path, so saving a comparison no longer stops at a dialog no user action could satisfy. The visible identity is BlinkTable everywhere it appears, and the store listing carries new screenshots.</p>
+      </description>
+    </release>
     <release version="11.0.0" date="2026-10-22">
       <url>https://github.com/Loganavter/BlinkTable/releases/tag/v11.0.0</url>
       <description>
