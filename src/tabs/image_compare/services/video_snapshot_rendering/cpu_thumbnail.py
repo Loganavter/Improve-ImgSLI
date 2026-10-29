@@ -177,9 +177,13 @@ def _feature_would_paint(states) -> bool:
         if key in ("divider", "capture"):
             continue
         if key == "magnifier":
-            if bool(getattr(state, "enabled", False)) or bool(
-                getattr(state, "models", None)
-            ):
+            # Only the feature flag decides whether the loupe paints:
+            # MagnifierWidgetState.enabled defaults to False while the live
+            # canvas still carries a default instance model, so gating on
+            # ``models`` disabled the CPU path for every real recording
+            # (verified live 2026-10-29: a default session shows no loupe in
+            # the canvas capture, yet the state holds one model).
+            if bool(getattr(state, "enabled", False)):
                 return True
             continue
         if bool(getattr(state, "enabled", False)):
