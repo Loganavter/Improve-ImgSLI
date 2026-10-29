@@ -1,6 +1,8 @@
 import logging
 from typing import Callable, Dict, List
 
+# Audit-Meta: pattern=state-machine reason="SettleGate + wave generation + membership filter + idle-fill re-arm are one generation state machine; a split would separate the retire from the fill it must re-arm"
+
 from PySide6.QtGui import QPixmap
 from sli_ui_toolkit.managers import SettleGate
 from sli_ui_toolkit.ui.widgets.composite.timeline_widget import (
@@ -275,32 +277,24 @@ class ThumbnailCoordinator:
             self.emit_thumbnails_updated(thumbnails)
 
     def on_thumbnails_generation_finished(self):
-        """P3 idle fill entry: queue every still-unseen index.
-
-        The initial wave covered the visible window only
-        (visible-window-exact queue), so the remainder follows here at
-        background priority. Delegates to :meth:`_queue_idle_remainder`,
-        which the viewport refresh also re-arms — see that method for why
-        the fill cannot ride ``generationFinished`` alone.
-        """
+        """P3 idle fill entry — see :meth:`_queue_idle_remainder`."""
         return self._queue_idle_remainder()
 
     def _queue_idle_remainder(self):
-        """Queue the unseen remainder at background priority (idempotent).
+        """Queue every still-unseen index at background priority (idempotent).
 
-        ``generate_additional_thumbnails`` runs them at lower pool priority
-        and consults the P2 disk cache first, so a warm remainder costs
-        ~zero. ``track_finish=False`` there means this fill never re-emits
-        ``generationFinished``: no loop, no second scheduler.
+        The initial wave covers the visible window only; this fill runs the
+        rest at lower pool priority and consults the P2 disk cache first
+        (a warm remainder costs ~zero). ``track_finish=False`` there means
+        the fill never re-emits ``generationFinished``: no loop.
 
-        Re-armed by :meth:`_refresh_visible_thumbnails` whenever a refresh
-        retires the in-flight wave: a retire abandons that wave's
-        completions, and the fill used to ride exactly that wave's
-        ``generationFinished``, so the first scroll/resize settled the
-        strip at the visible window and never grew it again (owner report
-        2026-10-29: the filmstrip kept the frame count of the first
-        layout). Only indices that are neither generated nor pending are
-        queued, so a re-arm can never duplicate live work.
+        Also re-armed by :meth:`_refresh_visible_thumbnails` on every
+        retiring refresh. A retire abandons that wave's completions, and
+        the fill used to ride exactly its ``generationFinished``, so the
+        first scroll/resize settled the strip at the visible window and it
+        never grew again (owner report 2026-10-29: the filmstrip kept the
+        frame count of the first layout). Only unseen, non-pending indices
+        queue, so a re-arm never duplicates live work.
         """
         try:
             if self.editor_service is None:
