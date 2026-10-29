@@ -1,6 +1,8 @@
 import logging
 from typing import Callable, Dict, List
 
+# Audit-Meta: pattern=state-machine reason="SettleGate + wave generation + membership filter + idle-fill re-arm are one generation state machine; a split would separate the retire from the fill it must re-arm"
+
 from PySide6.QtGui import QPixmap
 from sli_ui_toolkit.managers import SettleGate
 from sli_ui_toolkit.ui.widgets.composite.timeline_widget import (
@@ -11,6 +13,19 @@ from .common import VIDEO_EDITOR_AUTO_CROP
 from core.log_names import APP_LOGGER_NAME
 
 logger = logging.getLogger(APP_LOGGER_NAME)
+
+_IDLE_FILL_OVERSCAN_BLOCKS = 24
+"""Blocks of look-ahead the idle fill pre-renders on each side of the viewport.
+
+The strip draws one thumbnail per BLOCK, never per frame: a fitted 40 s
+recording is ~14 blocks while its frame count is 2406. Filling
+``range(total_frames)`` therefore rendered ~170 thumbnails for every tile
+that can be on screen (owner report 2026-10-29: "превью в ленте генерятся
+крайне долго", ~15 ms per thumbnail). The fill now covers the block reps of
+the viewport plus this look-ahead, so a fitted strip is complete after its
+first wave and a zoomed-in strip pre-renders about two windows ahead; the
+retiring refresh re-arms it as the viewport moves.
+"""
 
 
 class ThumbnailCoordinator:
@@ -275,16 +290,42 @@ class ThumbnailCoordinator:
             self.emit_thumbnails_updated(thumbnails)
 
     def on_thumbnails_generation_finished(self):
-        # P3 idle fill: the initial wave covered the visible window only
-        # (visible-window-exact queue). Queue every still-unseen index at
-        # background priority — generate_additional runs them at lower pool
-        # priority and consults the P2 disk cache first, so a warm
-        # remainder costs ~zero. track_finish=False there means this fill
-        # never re-emits generationFinished: no loop, no second scheduler.
+        """P3 idle fill entry — see :meth:`_queue_idle_remainder`."""
+        return self._queue_idle_remainder()
+
+    def _queue_idle_remainder(self):
+        """Queue the unseen look-ahead reps at background priority (idempotent).
+
+        The initial wave covers the visible window only; this fill runs the
+        viewport plus ``_IDLE_FILL_OVERSCAN_BLOCKS`` of look-ahead at lower
+        pool priority and consults the P2 disk cache first (a warm remainder
+        costs ~zero). ``track_finish=False`` there means the fill never
+        re-emits ``generationFinished``: no loop.
+
+        The wanted set comes from the strip's own block layout, not from
+        ``range(total_frames)``: the strip draws one thumbnail per block, so
+        a per-frame fill rendered orders of magnitude more thumbnails than
+        the strip can ever show (see ``_IDLE_FILL_OVERSCAN_BLOCKS``).
+
+        Also re-armed by :meth:`_refresh_visible_thumbnails` on every
+        retiring refresh. A retire abandons that wave's completions, and
+        the fill used to ride exactly its ``generationFinished``, so the
+        first scroll/resize settled the strip at the visible window and it
+        never grew again (owner report 2026-10-29: the filmstrip kept the
+        frame count of the first layout). Only unseen, non-pending indices
+        queue, so a re-arm never duplicates live work.
+        """
         try:
             if self.editor_service is None:
                 return None
             total_frames = self.editor_service.get_frame_count()
+            if not isinstance(total_frames, int) or total_frames <= 0:
+                return None
+            wanted = self.get_visible_frame_indices(
+                margin=_IDLE_FILL_OVERSCAN_BLOCKS
+            )
+            if not wanted:
+                return None
             generated = set(
                 getattr(self.thumbnail_service, "_generated_indices", None)
                 or ()
@@ -292,12 +333,8 @@ class ThumbnailCoordinator:
             pending = set(
                 getattr(self.thumbnail_service, "_pending_indices", None) or ()
             )
-            if not isinstance(total_frames, int) or total_frames <= 0:
-                return None
             remainder = [
-                i
-                for i in range(total_frames)
-                if i not in generated and i not in pending
+                i for i in wanted if i not in generated and i not in pending
             ]
             if remainder:
                 self.thumbnail_service.generate_additional_thumbnails(
@@ -409,6 +446,7 @@ class ThumbnailCoordinator:
                 and current_zoom is not None
                 and current_zoom != self._last_zoom_level
             )
+            retired = False
             if self._last_visible_indices is not None and set(
                 visible_indices
             ) != set(self._last_visible_indices):
@@ -432,6 +470,7 @@ class ThumbnailCoordinator:
                         retired_generation = retire()
                         if isinstance(retired_generation, int):
                             self._feed_generation = retired_generation
+                        retired = True
             # NOTE (rep-remap, I1/I2): a zoom-driven refresh that skips the
             # retire above keeps the in-flight wave alive while the rep grid
             # remaps (strip_block_layout recomputes rep frames from geometry
@@ -450,6 +489,15 @@ class ThumbnailCoordinator:
                 visible_indices,
                 fps=self.editor_service.get_fps(),
             )
+            if retired:
+                # The retire above abandoned the in-flight wave (its
+                # completions drop as stale), and that wave's
+                # generationFinished carried the P3 idle fill — so without
+                # this re-arm the strip stops at the visible window and
+                # never grows again. Queued AFTER the visible window so
+                # on-screen frames keep first claim on the pool; the
+                # remainder is idempotent (only unseen, non-pending).
+                self._queue_idle_remainder()
         else:
             try:
                 from tabs.image_compare.debug import ic_thumbnail_debug
