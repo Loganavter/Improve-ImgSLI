@@ -174,7 +174,15 @@ def _feature_would_paint(states) -> bool:
     gating on it would disable the CPU path for every snapshot.
     """
     for key, state in states.items():
-        if key in ("divider", "capture"):
+        if key in ("divider", "capture", "guides"):
+            # ``divider`` is reproduced here. ``capture`` alone paints
+            # nothing. ``guides`` is a SETTING (enabled/thickness/colour):
+            # GuidesPass.should_paint needs ``runtime_state._guide_sets``,
+            # which only a magnifier overlay produces (plan_overlay.py:131
+            # fills it from the magnifier layout), so a snapshot with guides
+            # enabled and no magnifier paints nothing. Gating on it sent
+            # every recording of a guides-on session to the GPU path for no
+            # pixels (owner settings 2026-10-29: guides.enabled=true).
             continue
         if key == "magnifier":
             # Only the feature flag decides whether the loupe paints:
