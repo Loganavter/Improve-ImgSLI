@@ -363,37 +363,17 @@ class ThumbnailCoordinator:
         self._ping_visible_refresh()
 
     def on_timeline_viewport_state_changed(self, _state=None):
-        """Layout-settled viewport state: refresh now, coalesce a burst.
-
-        The toolkit emits ``viewportChangedState`` after its own layout
-        settle (fit_view/update_fixed_width), so the visible window is
-        already correct here and waiting a full debounce only delays the
-        first paint. A *burst* of those commits is the trap: opening the
-        dialog lays out in several steps (preview panel, scrollbar, fit),
-        each step shifts every block's rep by a few frames, and an
-        immediate refresh per step queued a fresh rep set each time. Owner
-        log 2026-10-29: a 361-frame recording queued 58 renders for ~8
-        visible tiles, five waves of 8-9 inside 0.5 s.
-
-        So: refresh immediately on the first commit, arm the settle gate,
-        and let the remaining commits of the burst coalesce into one
-        refresh.
-        """
+        # Toolkit TimelineWidget emits viewportChangedState after its own
+        # layout settle (fit_view/update_fixed_width) finishes — at that
+        # point get_visible_thumbnail_frame_indices returns a settled window.
+        # Bypass the extra debounce and refresh immediately.
         try:
             from tabs.image_compare.debug import ic_thumbnail_debug
-            ic_thumbnail_debug(
-                "thumb_coord viewportChangedState pending=%s refresh=%s",
-                self._visible_refresh.is_pending(),
-                not self._visible_refresh.is_pending(),
-            )
+            ic_thumbnail_debug("thumb_coord viewportChangedState cancel+refresh gate_pending=%s", self._visible_refresh.is_pending())
         except Exception:
             pass
-        if self._visible_refresh.is_pending():
-            self._ping_visible_refresh()
-            return
         self._cancel_visible_refresh()
         self._refresh_visible_thumbnails()
-        self._ping_visible_refresh()
 
     def _read_zoom_level(self) -> float | None:
         """Snapshot the timeline zoom scalar via the public pps API.
