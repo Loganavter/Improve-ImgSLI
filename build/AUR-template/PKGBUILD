@@ -1,8 +1,9 @@
 # Maintainer: Boradorka
 # Co-maintainer: Nebulosa
 
-# Product name is BlinkTable (src/core/log_names.py APP_NAME); the repo and
-# AUR source stay 'Improve-ImgSLI' because that is the GitHub archive name.
+# Product name is BlinkTable (src/core/log_names.py APP_NAME); the AUR package
+# name is the product name in lower case, and the source archive is the GitHub
+# tag archive of the repository (BlinkTable since the 2026-10-29 rename).
 pkgname=blinktable
 pkgver=11.0.1
 pkgrel=1
@@ -48,11 +49,11 @@ sha256sums=('fb0b29f4fd22d6f1d55bc1b28d223a4752d56d53f9c827fdd51070fecafcde59'
 
 prepare() {
   #Making launching app more secure
-  sed -i "s|^Exec=$pkgname|Exec=/usr/bin/$pkgname|" "$srcdir"/Improve-ImgSLI-$pkgver/build/AUR-template/$pkgname.desktop
+  sed -i "s|^Exec=$pkgname|Exec=/usr/bin/$pkgname|" "$srcdir"/BlinkTable-$pkgver/build/AUR-template/$pkgname.desktop
 }
 
 package() {
-  cd "$srcdir/Improve-ImgSLI-$pkgver"
+  cd "$srcdir/BlinkTable-$pkgver"
 
   # Install launcher, desktop file, icon, and license
   install -vDm 755 build/AUR-template/launcher.sh "$pkgdir/usr/bin/$pkgname"
