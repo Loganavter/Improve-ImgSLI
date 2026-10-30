@@ -38,6 +38,28 @@ shift; informational — see below), ``--renderer production`` (drive the app's
 ``strip_window.build_window`` + ``render_window`` instead of this bench's own
 atlas widget; the local path stays the reference implementation).
 
+``--band`` drives the EDITOR's band wiring on top of that production seam —
+the instrument for "the band renders the wrong pixels" reports. It builds the
+window the way ``StripBandHost`` does (``strip_recording.strip_tile_size`` for
+the tile, ``strip_band.render_request`` for the request, ``proxy_pair_for``
+over an exporter seam that resolves a pyramid LEVEL exactly as
+``_resolve_thumbnail_images`` does, ``StripRecordingAdapter`` for the
+recording), renders it into a target of the band's own device-pixel size
+(``--band-target``), slices each cell with the window's rects and prints a
+stage table: target vs grid, per-tile tile/canvas/image/letterbox/content
+rect, the resolved proxy size, and the pixels. A stage that disagrees with the
+filmstrip contract (one band tile IS one filmstrip thumbnail — the 160x90
+target ``is_thumbnail_target_size`` keys the cover plan on) fails the run even
+when the batch itself is byte-exact, so "the pass is right and the plan is
+wrong" cannot pass as green.
+
+The 2026-10-30 phase-2 report ("each cell shows a narrow sliver of the frame
+with black beside it") is that stage: a cell-sized tile (``--tiles 128x72``)
+plans every frame through the fit-inside path, letterboxed inside its cell
+(measured 106 of 128 px of content); at a 250x72 cell the content collapses to
+106 of 250 px. ``strip_tile_size`` is the fix — the tile is the thumbnail the
+QPainter strip rendered, and the pass stretches it over the cell.
+
 The ``--renderer production`` flag is the phase-1 integration seam: it plans a
 window through the production recording contract (``evaluate_at`` +
 ``images_for``), renders it through the production one-pass renderer and
@@ -81,11 +103,12 @@ Temp files live under a ``tempfile.mkdtemp()`` removed at exit; the sources
 are generated deterministically (no seed needed, no network).
 """
 
-# Audit-Meta: pattern=instrument reason="phase-0 bench: CPU planning + one-pass atlas + exactness harness + self-test are one measurement; splitting them would let the two halves drift"
+# Audit-Meta: pattern=instrument reason="phase-0 bench: CPU planning + one-pass atlas + exactness harness + self-test are one measurement, and the band-host seam (--band) reuses the same planning/packing/slicing so its stage verdict cannot drift from the atlas verdict; splitting them would let the halves disagree"
 from __future__ import annotations
 
 import argparse
 import hashlib
+import math
 import os
 import shutil
 import struct
@@ -1508,6 +1531,95 @@ def _clear_color():
     return QColor(0, 0, 0, 0)
 
 
+def run_band_window(window, target_size=None):
+    """Render the window the way the BAND does; slice its own framebuffer.
+
+    The band's target is its own device-pixel size, which the host never
+    equates with the window grid: ``StripPassResources`` scales the grid onto
+    whatever ``band.renderTarget().pixelSize()`` reports. So this drives the
+    production renderer into a target of the given size and slices the cells
+    out of one grab. The rects the PASS recorded (``framebuffer_rects``,
+    bottom-up / Y-flipped) are reported alongside; slicing uses the window's
+    logical rects scaled to the grab, because a grab is top-down — phase 0's
+    row-order lesson. An off-grid target is a resample, never a silent pass.
+    """
+    from engine.gpu.offscreen_canvas import (
+        render_widget_frame,
+        resize_and_show_offscreen_widget,
+    )
+    from tabs.image_compare.services.video_snapshot_rendering.strip_pass import (
+        framebuffer_rects,
+    )
+
+    _qt_app()
+    grid = (int(window.target_w), int(window.target_h))
+    size = grid if target_size is None else (int(target_size[0]), int(target_size[1]))
+    widget = _make_production_widget(window)
+    resize_and_show_offscreen_widget(widget, size)
+    _must_have_rhi(widget, "band strip window")
+
+    pass_started = time.perf_counter()
+    render_widget_frame(widget)
+    render_widget_frame(widget)
+    pass_ms = (time.perf_counter() - pass_started) * 1000.0
+    if widget._last_error:
+        raise _NoDisplayError(widget._last_error)
+
+    from engine.gpu.export_tiling import qimage_to_pil_rgba
+
+    readback_started = time.perf_counter()
+    qimage = widget.grabFramebuffer()
+    if qimage is None or qimage.isNull():
+        raise _NoDisplayError(
+            "band strip window: grabFramebuffer() returned a null image"
+        )
+    image = qimage_to_pil_rgba(qimage)
+    readback_ms = (time.perf_counter() - readback_started) * 1000.0
+    # What the PASS recorded (bottom-up framebuffer space, Y flipped where the
+    # never-shown rule says so) — reported, never used to slice: a grab is
+    # top-down, so the visual rects are the window's logical ones scaled.
+    pass_rects = framebuffer_rects(
+        window, widget.renderTarget(), rhi=widget.rhi(), never_shown=True
+    )
+    scale = (image.size[0] / float(grid[0]), image.size[1] / float(grid[1]))
+    rects = [
+        (
+            int(round(x * scale[0])),
+            int(round(y * scale[1])),
+            int(round(w * scale[0])),
+            int(round(h * scale[1])),
+        )
+        for (x, y, w, h) in window.rects()
+    ]
+    upload_stats = {"capacity": 0, "skipped": 0, "layers": 0}
+    try:
+        from tabs.image_compare.services.video_snapshot_rendering import strip_pass
+
+        resources = strip_pass._PASSES.get(id(widget.rhi()))
+        if resources is not None and resources._array is not None:
+            upload_stats = {
+                "capacity": int(resources._array.array_capacity),
+                "skipped": int(resources._array.array_upload_skipped_count),
+                "layers": int(resources._tile_count),
+            }
+    except Exception:
+        pass
+    try:
+        widget.close()
+        widget.deleteLater()
+    except Exception:
+        pass
+    return {
+        "image": image,
+        "rects": rects,
+        "pass_rects": pass_rects,
+        "scale": scale,
+        "pass_ms": pass_ms,
+        "readback_ms": readback_ms,
+        "upload": upload_stats,
+    }
+
+
 def _release_production_window(window) -> None:
     """Cancel the consumed window and drop its planning graph.
 
@@ -1830,6 +1942,273 @@ def run_production_window(window):
 
 
 # ---------------------------------------------------------------------------
+# Band host seam (phase 2 wiring): build/plan exactly as the editor does
+# ---------------------------------------------------------------------------
+
+
+def filmstrip_proxy_size(source_size, tile_size):
+    """The pyramid level the exporter's thumbnail seam hands back for a tile.
+
+    ``VideoExporterService._resolve_thumbnail_images`` resolves a pyramid
+    LEVEL (``_pick_thumbnail_proxy_from_base`` -> ``demand_level`` over
+    ``thumbnail_proxy_dest_scale``), never a copy resized to the request box:
+    a level keeps the SOURCE aspect and its size is a halving ladder of the
+    source, so it only incidentally equals the tile. Modelling the production
+    size rule (not "resize to the box") is what lets the band stage report see
+    a proxy that disagrees with the tile aspect.
+    """
+    from tabs.image_compare.services.video_snapshot_rendering.geometry import (
+        thumbnail_proxy_dest_scale,
+    )
+
+    sw = max(1, int(source_size[0]))
+    sh = max(1, int(source_size[1]))
+    tw = max(1, int(tile_size[0]))
+    th = max(1, int(tile_size[1]))
+    scale = thumbnail_proxy_dest_scale(sw, sh, tw, th)
+    if scale <= 0.0:
+        return (sw, sh)
+    level_count = max(1, int(math.floor(math.log2(max(sw, sh)))) + 1)
+    from engine.cache.lod import demand_level
+
+    level = int(demand_level(scale, level_count))
+    level = max(0, min(int(level), level_count - 1))
+    return (max(1, sw >> level), max(1, sh >> level))
+
+
+class _BandExporter:
+    """The exporter seam the band's ``proxy_pair_for`` drives (no decode).
+
+    Same public shape the host talks to: ``_resolve_thumbnail_images(snap,
+    auto_crop, target_size) -> ((img1, img2), kinds)``. The pixels are the
+    bench pair's encoded sources resampled to the pyramid level the service
+    would have picked, so every stage the band consumes (proxy size, plan
+    canvas, letterbox, pixels) is the one the editor sees.
+    """
+
+    def __init__(self, image1_path, image2_path) -> None:
+        from PIL import Image
+
+        self._source1 = Image.open(image1_path).convert("RGBA")
+        self._source2 = Image.open(image2_path).convert("RGBA")
+        self._levels: dict[tuple[int, int], tuple] = {}
+        self.calls: list[tuple] = []
+
+    @property
+    def source_size(self) -> tuple[int, int]:
+        return (self._source1.width, self._source1.height)
+
+    def _resolve_thumbnail_images(self, snap, auto_crop, target_size):
+        size = filmstrip_proxy_size(self.source_size, target_size)
+        self.calls.append((bool(auto_crop), tuple(int(v) for v in target_size), size))
+        return (self._level(size), ("pyramid", "pyramid"))
+
+    def _level(self, size):
+        """Both sides at one level size, hoisted: the strip resolves one pair."""
+        key = (int(size[0]), int(size[1]))
+        cached = self._levels.get(key)
+        if cached is None:
+            cached = (self._resized(self._source1, key), self._resized(self._source2, key))
+            self._levels[key] = cached
+        return cached
+
+    @staticmethod
+    def _resized(image, size):
+        from PIL import Image
+
+        if (image.width, image.height) == (int(size[0]), int(size[1])):
+            return image
+        return image.resize((int(size[0]), int(size[1])), Image.Resampling.BICUBIC)
+
+
+def build_band_window(
+    store,
+    count: int,
+    tile_w: int,
+    tile_h: int,
+    image1_path,
+    image2_path,
+    exporter: _BandExporter,
+    *,
+    cols: int | None = None,
+):
+    """``build_window`` driven exactly as ``StripBandHost`` drives it.
+
+    The host's own pieces, not a bench re-implementation: the tile comes from
+    ``strip_recording.strip_tile_size`` (the layout's declared size), the
+    source pair from ``strip_recording.proxy_pair_for`` over the exporter seam
+    (never a decode), the plan request from ``strip_band.render_request``
+    (the same ``VideoRenderRequest`` the host builds), and the recording is
+    the host's ``StripRecordingAdapter``. Only the block layout is synthetic —
+    the bench has no timeline — and it is the same ``StripBlockLayout`` shape.
+    """
+    from tabs.image_compare.plugins.video_editor.presenter_parts.strip_band import (
+        render_request as band_render_request,
+    )
+    from tabs.image_compare.plugins.video_editor.services.strip_recording import (
+        StripRecordingAdapter,
+        proxy_pair_for,
+    )
+    from tabs.image_compare.services.video_snapshot_rendering.strip_window import (
+        StripBlockLayout,
+        build_window,
+    )
+
+    resolved_cols = int(count) if cols is None else int(cols)
+    layout = StripBlockLayout(
+        tile_size=(int(tile_w), int(tile_h)),
+        fps=FPS,
+        block_count=int(count),
+        cols=resolved_cols,
+    )
+    frames = _BenchRecording(
+        store, str(image1_path), str(image2_path), None, None
+    )
+    recording = StripRecordingAdapter(
+        frames,
+        proxy_pair=proxy_pair_for(exporter),
+        layout=layout,
+        fps=layout.fps,
+    )
+    return build_window(
+        recording,
+        0,
+        int(count),
+        int(tile_w),
+        int(tile_h),
+        request=band_render_request(int(tile_w), int(tile_h)),
+        layout=layout,
+    )
+
+
+def band_stages(window, exporter: _BandExporter, target_size=None) -> dict:
+    """Every value that decides what the band draws, in one dict.
+
+    The band's divergence instrument: a stage that disagrees with the
+    filmstrip contract names itself here instead of showing up as "wrong
+    pixels". ``target_size`` is the render target's DEVICE pixel size (the
+    band's own ``renderTarget().pixelSize()``); ``None`` means the window grid
+    1:1.
+    """
+    from tabs.image_compare.services.video_snapshot_rendering.geometry import (
+        THUMBNAIL_TARGET_SIZE,
+    )
+    from tabs.image_compare.services.video_snapshot_rendering.strip_window import (
+        tile_letterbox_geometry,
+    )
+
+    grid = (int(window.target_w), int(window.target_h))
+    target = grid if target_size is None else (int(target_size[0]), int(target_size[1]))
+    tiles = []
+    for tile in window.tiles:
+        letterbox, canvas_letterbox, content_rect = tile_letterbox_geometry(tile)
+        tiles.append(
+            {
+                "index": int(tile.index),
+                "tile": (int(tile.tile_w), int(tile.tile_h)),
+                "canvas": (int(tile.canvas_w), int(tile.canvas_h)),
+                "image": (
+                    int(getattr(tile.image1, "width", 0)),
+                    int(getattr(tile.image1, "height", 0)),
+                ),
+                "letterbox": tuple(round(float(v), 4) for v in letterbox),
+                "canvas_letterbox": tuple(
+                    round(float(v), 4) for v in canvas_letterbox
+                ),
+                "content_rect": tuple(int(v) for v in content_rect),
+                "placeholder": tile.placeholder_reason,
+            }
+        )
+    return {
+        "grid": grid,
+        "target": target,
+        "scale": (target[0] / float(grid[0]), target[1] / float(grid[1])),
+        "count": int(window.count),
+        "cols": int(window.cols),
+        "rows": int(window.rows),
+        "thumbnail": tuple(int(v) for v in THUMBNAIL_TARGET_SIZE),
+        "proxy_calls": list(exporter.calls[:1]),
+        "source_size": exporter.source_size,
+        "tiles": tiles,
+    }
+
+
+def band_divergences(stages: dict) -> list[str]:
+    """Stages that disagree with the filmstrip contract (empty = none).
+
+    The contract: one band tile IS one filmstrip thumbnail — the request target
+    the QPainter strip rendered (``THUMBNAIL_TARGET_SIZE``, the one size that
+    selects the plan builder's cover path and the pyramid pick the thumbnail
+    seam uses) — and the pass stretches that tile over one block cell. A tile
+    planned at the cell's own aspect takes the fit-inside path instead, which
+    letterboxes the frame inside the cell: the phase-2 "narrow sliver" report.
+
+    The letterbox itself is REPORTED, not asserted full: a thumbnail whose
+    source aspect differs from 16:9 legitimately carries bars, and the band
+    must reproduce exactly that thumbnail.
+    """
+    findings: list[str] = []
+    thumbnail = stages["thumbnail"]
+    for tile in stages["tiles"]:
+        if tile["placeholder"]:
+            findings.append(
+                f"tile {tile['index']}: placeholder ({tile['placeholder']})"
+            )
+            continue
+        if tile["tile"] != thumbnail:
+            findings.append(
+                f"tile {tile['index']}: tile {tile['tile']} is not the filmstrip "
+                f"thumbnail {thumbnail} — the plan takes the fit-inside path and "
+                f"is drawn inside letterbox {tile['letterbox']} "
+                f"(content rect {tile['content_rect']})"
+            )
+        if tile["canvas"] != tile["tile"]:
+            findings.append(
+                f"tile {tile['index']}: plan canvas {tile['canvas']} != tile "
+                f"{tile['tile']}"
+            )
+    return findings
+
+
+def print_band_stages(stages: dict, divergences, quiet: bool = False) -> None:
+    """Print the band stage table (and the stages that diverge)."""
+    if quiet:
+        return
+    tile = stages["tiles"][0] if stages["tiles"] else {}
+    print(
+        f"  band target {stages['target'][0]}x{stages['target'][1]} px for a "
+        f"{stages['grid'][0]}x{stages['grid'][1]} grid "
+        f"({stages['count']} blocks, {stages['cols']}x{stages['rows']} cells)"
+    )
+    if tile:
+        print(
+            f"  band tile {tile['tile']} (filmstrip thumbnail "
+            f"{stages['thumbnail'][0]}x{stages['thumbnail'][1]}), plan canvas "
+            f"{tile['canvas']}, plan image {tile['image']}, letterbox "
+            f"{tile['letterbox']}, content rect {tile['content_rect']}"
+        )
+    for call in stages["proxy_calls"]:
+        print(
+            f"  band proxy: requested {call[1]} -> {call[2]} "
+            f"(source {stages['source_size'][0]}x{stages['source_size'][1]})"
+        )
+    scale = stages["scale"]
+    if abs(scale[0] - 1.0) > 1e-9 or abs(scale[1] - 1.0) > 1e-9:
+        # A note, not a verdict: the host's band is its own widget size, and
+        # the strip has always scaled one tile into one block cell.
+        print(
+            f"  note: target {stages['target']} != grid {stages['grid']} "
+            f"(scale {scale[0]:.3f}x{scale[1]:.3f}) — every cell is a uniform "
+            "resample; the exactness column is informational"
+        )
+    if divergences:
+        for finding in divergences:
+            print(f"  DIVERGES: {finding}")
+    else:
+        print("  band stages: all agree with the filmstrip contract")
+
+
+# ---------------------------------------------------------------------------
 # Self-test (no GPU, no Qt display)
 # ---------------------------------------------------------------------------
 
@@ -2088,7 +2467,32 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--frames", default=",".join(str(n) for n in DEFAULT_FRAMES))
-    parser.add_argument("--tiles", default=f"{DEFAULT_TILE[0]}x{DEFAULT_TILE[1]}")
+    parser.add_argument(
+        "--band",
+        action="store_true",
+        help=(
+            "drive the editor's band wiring instead of a bare window: the tile "
+            "comes from strip_recording.strip_tile_size (the layout's declared "
+            "size), the VideoRenderRequest from strip_band.render_request, the "
+            "source pair from proxy_pair_for over an exporter seam that resolves "
+            "a pyramid LEVEL (the production size rule), and the target is the "
+            "band's own device-pixel size (--band-target). Prints the stage "
+            "table and names the stage that diverges from the filmstrip "
+            "contract. --tiles overrides the tile (--tiles 128x72 reproduces "
+            "the phase-2 cell-aspect tile)."
+        ),
+    )
+    parser.add_argument(
+        "--band-target",
+        default=None,
+        help=(
+            "band render-target pixel size WxH (default = the window grid, i.e. "
+            "cols*tile). An off-grid target is a deliberate uniform resample: "
+            "the run reports the scale and marks its exactness column "
+            "informational instead of claiming a byte comparison."
+        ),
+    )
+    parser.add_argument("--tiles", default=None)
     parser.add_argument("--reference-samples", type=int, default=0, help="hash only the first K reference tiles (0 = all)")
     parser.add_argument(
         "--varied-sources",
@@ -2106,7 +2510,21 @@ def main(argv: list[str] | None = None) -> int:
         return run_self_test(quiet=args.quiet)
 
     frames = _parse_frames(args.frames)
-    tile_w, tile_h = _parse_tile(args.tiles)
+    if args.tiles is None:
+        if args.band:
+            from tabs.image_compare.plugins.video_editor.services.strip_recording import (
+                strip_tile_size,
+            )
+
+            tile_w, tile_h = strip_tile_size()
+        else:
+            tile_w, tile_h = DEFAULT_TILE
+    else:
+        tile_w, tile_h = _parse_tile(args.tiles)
+    band_target = _parse_tile(args.band_target) if args.band_target else None
+    if band_target is not None and not args.band:
+        print("\n--band-target only applies with --band", file=sys.stderr)
+        return 1
     if max(tile_w, tile_h) > LAYER_PX:
         # Production uploads a tile 1:1 into one array layer and refuses an
         # image larger than the layer (ArrayResources._image_rejection), so a
@@ -2131,10 +2549,18 @@ def main(argv: list[str] | None = None) -> int:
         image1_path, image2_path = make_sources(workdir)
 
         rows = []
+        # Band-mode verdicts: per-N stage findings (a diverging stage is a
+        # failure even when the batch itself is byte-exact) and the rows whose
+        # off-grid target makes the exactness column informational.
+        band_stage_findings: dict[int, list[str]] = {}
+        informational_rows: set[int] = set()
+
         # The production renderer plans through the app's own recording seam,
         # so it needs the store the plan builder reads (same store shape
         # ``build_tiles`` builds internally for the local path).
-        production_store = _build_store() if args.renderer == "production" else None
+        production_store = (
+            _build_store() if (args.band or args.renderer == "production") else None
+        )
         # One warm-up plan before any timing: source decode + first plan
         # compile are one-time costs that would otherwise land on N=17 and
         # read as "planning got 10x cheaper with more tiles".
@@ -2152,7 +2578,29 @@ def main(argv: list[str] | None = None) -> int:
         for count in frames:
             if not args.quiet:
                 print(f"\nN={count}")
-            if args.renderer == "production":
+            seam = "band" if args.band else args.renderer
+            exporter = None
+            stages = None
+            if seam == "band":
+                exporter = _BandExporter(image1_path, image2_path)
+                window = build_band_window(
+                    production_store,
+                    count,
+                    tile_w,
+                    tile_h,
+                    image1_path,
+                    image2_path,
+                    exporter,
+                    cols=_cols_for(count),
+                )
+                tiles = list(window.tiles)
+                plan_ms = window.build_ms
+                pack_ms = 0.0
+                placeholders = window.placeholder_reasons
+                stages = band_stages(window, exporter, band_target)
+                divergences = band_divergences(stages)
+                print_band_stages(stages, divergences, quiet=args.quiet)
+            elif seam == "production":
                 window = build_production_window(
                     production_store,
                     count,
@@ -2181,9 +2629,10 @@ def main(argv: list[str] | None = None) -> int:
                 placeholders = {}
             if args.cpu_only:
                 if not args.quiet:
-                    if args.renderer == "production":
+                    if seam in ("production", "band"):
+                        label = "band window" if seam == "band" else "production window"
                         print(
-                            f"  production window: {len(tiles)} tiles planned + "
+                            f"  {label}: {len(tiles)} tiles planned + "
                             f"packed in {plan_ms:.2f} ms "
                             f"(block {_uniform_block_size()}B, stride "
                             f"{UNIFORM_STRIDE}B, instance "
@@ -2201,7 +2650,7 @@ def main(argv: list[str] | None = None) -> int:
                             f"{'...' if len(tiles) > 4 else ''}"
                         )
                 rows.append((count, plan_ms, pack_ms, None, None, None))
-                if args.renderer == "production":
+                if seam in ("production", "band"):
                     _release_production_window(window)
                     window = None
                     tiles = None
@@ -2216,7 +2665,40 @@ def main(argv: list[str] | None = None) -> int:
             reference, reference_ms = render_reference_tiles(
                 tiles, args.reference_samples or None
             )
-            if args.renderer == "production":
+            band_result = None
+            if seam == "band":
+                band_result = run_band_window(window, band_target)
+                scale = band_result["scale"]
+                exact_1to1 = abs(scale[0] - 1.0) <= 1e-9 and abs(
+                    scale[1] - 1.0
+                ) <= 1e-9
+                batch_hashes: list = []
+                batch_bytes: list = []
+                if exact_1to1:
+                    raw = band_result["image"].tobytes("raw", "RGBA")
+                    batch_bytes = [
+                        slice_tile_bytes(raw, band_result["image"].size, rect)
+                        for rect in band_result["rects"]
+                    ]
+                    batch_hashes = [hash_rgba(blob) for blob in batch_bytes]
+                else:
+                    print(
+                        f"  informational: band target {band_result['image'].size} "
+                        f"for a {window.target_w}x{window.target_h} grid "
+                        f"(scale {scale[0]:.3f}x{scale[1]:.3f}) — every cell is a "
+                        "uniform resample, so no byte comparison is claimed"
+                    )
+                timings = {
+                    "pass_ms": band_result["pass_ms"],
+                    "readback_ms": band_result["readback_ms"],
+                    "upload": band_result["upload"],
+                    "layers": [
+                        (int(tile.index), int(tile.layer1), int(tile.layer2))
+                        for tile in window.tiles
+                    ],
+                    "divider_tiles": None,
+                }
+            elif seam == "production":
                 batch_hashes, batch_bytes, timings = run_production_window(window)
             else:
                 batch_hashes, batch_bytes, timings = run_batch_pass(
@@ -2227,6 +2709,7 @@ def main(argv: list[str] | None = None) -> int:
                 for index, (ref_hash, _dbg, _raw) in enumerate(reference)
                 if index < len(batch_hashes) and batch_hashes[index] == ref_hash
             )
+            informational = seam == "band" and not batch_hashes
             if not args.quiet:
                 print(
                     f"  reference {len(reference)} tiles in {reference_ms:.1f} ms; "
@@ -2294,10 +2777,21 @@ def main(argv: list[str] | None = None) -> int:
                         f"{index}:{layers[index]}" for index in sorted(layers)
                     )
                 )
-                print(
-                    f"  divider drawn per tile for {len(timings['divider_tiles'])}"
-                    f"/{len(tiles)} tiles"
-                )
+                if timings.get("upload"):
+                    print(
+                        f"  band array: {timings['upload']['layers']} tiles, "
+                        f"capacity {timings['upload']['capacity']} layers, "
+                        f"uploads skipped {timings['upload']['skipped']}"
+                    )
+                if timings.get("divider_tiles") is not None:
+                    print(
+                        f"  divider drawn per tile for {len(timings['divider_tiles'])}"
+                        f"/{len(tiles)} tiles"
+                    )
+            if seam == "band":
+                band_stage_findings[count] = list(divergences)
+                if informational:
+                    informational_rows.add(count)
             rows.append(
                 (
                     count,
@@ -2308,7 +2802,7 @@ def main(argv: list[str] | None = None) -> int:
                     len(reference),
                 )
             )
-            if args.renderer == "production":
+            if seam in ("production", "band"):
                 _release_production_window(window)
                 window = None
                 tiles = None
@@ -2329,15 +2823,40 @@ def main(argv: list[str] | None = None) -> int:
                 "plan's own per-frame proxy)."
             )
         for count, plan_ms, pass_ms, readback_ms, matches, total in rows:
+            exact = (
+                "informational (off-grid band target)"
+                if count in informational_rows
+                else f"{matches}/{total}"
+            )
             print(
                 f"{count:>3} | {plan_ms:>7.1f} | {pass_ms:>7.2f} | "
-                f"{readback_ms:>11.2f} | {matches}/{total}"
+                f"{readback_ms:>11.2f} | {exact}"
             )
+            if count in informational_rows:
+                continue
             if matches != total:
                 ok = False
             if count == 17 and pass_ms > BUDGET_MS_17:
                 print(f"  over budget: N=17 pass took {pass_ms:.2f} ms (budget {BUDGET_MS_17:.0f} ms)")
                 ok = False
+        if band_stage_findings:
+            failing = {
+                count: findings
+                for count, findings in band_stage_findings.items()
+                if findings
+            }
+            if failing:
+                ok = False
+                print("\nband stages that diverge from the filmstrip contract:")
+                for count in sorted(failing):
+                    for finding in failing[count]:
+                        print(f"  N={count}: {finding}")
+            else:
+                print(
+                    "\nband stages: every tile is the filmstrip thumbnail "
+                    "(the size the cover plan and the proxy pick are keyed on) "
+                    "at the band's target size"
+                )
         return 0 if ok else 1
     except _PreconditionError as exc:
         print(f"\nprecondition not met: {exc}", file=sys.stderr)

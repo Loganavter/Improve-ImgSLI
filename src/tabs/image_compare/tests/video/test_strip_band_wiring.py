@@ -5,8 +5,10 @@ decides *what* it draws is CPU and is pinned here:
 
 * the adapter asks the recording for the frame state and the exporter's proxy
   seam for the pixel pair — a strip tile never decodes on the interaction path;
-* the block layout / tile size / block->time mapping come from the timeline's
-  own ``strip_block_layout`` (rep frames), never from a second formula;
+* the block layout / block->time mapping come from the timeline's own
+  ``strip_block_layout`` (rep frames), never from a second formula, while the
+  TILE is the filmstrip thumbnail (``strip_tile_size``) — not the block cell's
+  aspect, which would letterbox every frame inside its cell;
 * one window per view change: the same view does not build twice, a new view
   supersedes the older window, and a stale window is refused at render time;
 * a build that raises keeps the previous window (fail-open);
@@ -37,10 +39,14 @@ from tabs.image_compare.plugins.video_editor.services.strip_recording import (
     MAX_BLOCKS,
     StripRecordingAdapter,
     proxy_pair_for,
+    strip_tile_size,
     timeline_strip_layout,
 )
 from tabs.image_compare.plugins.video_editor.widgets.timeline import (
     VideoTimelineWidget,
+)
+from tabs.image_compare.services.video_snapshot_rendering.geometry import (
+    THUMBNAIL_TARGET_SIZE,
 )
 from tabs.image_compare.services.video_snapshot_rendering.strip_window import (
     LAYER_PX,
@@ -188,18 +194,16 @@ def _layout(harness):
 
 
 def test_layout_is_the_timeline_block_layout(qapp):
-    """Tile size, block count and block->time all come from the timeline."""
+    """Block count and block->time come from the timeline; the tile is the
+    filmstrip thumbnail (see ``test_band_tiles_are_filmstrip_thumbnails``)."""
     harness = _Harness(qapp)
     try:
         layout, first_block, count = _layout(harness)
 
         assert count >= 2
-        expected_w = min(
-            int(round(timeline_viewport.get_base_tile_width(harness.widget))),
-            LAYER_PX,
-        )
-        expected_h = min(int(harness.widget.STRIP_HEIGHT), LAYER_PX)
+        expected_w, expected_h = strip_tile_size()
         assert layout.tile_size == (expected_w, expected_h)
+        assert layout.tile_size == THUMBNAIL_TARGET_SIZE
         assert layout.fps == _FPS
         # One row: tile i lands on block i of the strip.
         assert layout.cols == count
@@ -227,6 +231,111 @@ def test_layout_is_the_timeline_block_layout(qapp):
             min(last, first + MAX_BLOCKS),
         )
     finally:
+        harness.close()
+
+
+def test_band_tiles_are_filmstrip_thumbnails(qapp):
+    """The band plans the THUMBNAIL the strip drew, never the block cell.
+
+    ``is_thumbnail_target_size`` (exactly 160x90) is what selects the plan
+    builder's full-bleed cover path; a tile sized to the block cell's own
+    aspect takes the fit-inside path instead and letterboxes every frame
+    inside its cell (measured: a 250x72 cell — a zoomed-in strip — carried
+    only 106 px of content, the "narrow sliver with black on the right").
+    """
+    harness = _Harness(qapp)
+    calls: list = []
+
+    def _builder(recording, first_block, count, tile_w, tile_h, **kwargs):
+        calls.append((tile_w, tile_h, kwargs.get("request")))
+        return SimpleNamespace(first_block=first_block, count=count)
+
+    host = harness.host(builder=_builder)
+    try:
+        host.attach()
+
+        tile_w, tile_h, request = calls[-1]
+        assert (tile_w, tile_h) == strip_tile_size() == THUMBNAIL_TARGET_SIZE
+        # The same numbers reach the plan builder: the request target is what
+        # keys the cover path, so the plan a tile gets is the thumbnail's.
+        assert (
+            request.target_surface.width,
+            request.target_surface.height,
+        ) == THUMBNAIL_TARGET_SIZE
+        assert (request.auto_crop, request.fit_content) == (False, False)
+
+        # The block cell is NOT the tile: at the fitted view the cell is
+        # 128x72 while the tile is the 160x90 thumbnail. (base tile width is
+        # zoom-invariant by design, so the cell aspect is a fixed choice, not
+        # a zoom artifact — which is exactly why a cell-sized tile letterboxed
+        # every frame at every zoom in phase 2.)
+        cell = (
+            int(round(timeline_viewport.get_base_tile_width(harness.widget))),
+            int(harness.widget.STRIP_HEIGHT),
+        )
+        assert cell != (tile_w, tile_h)
+        harness.widget.set_zoom(8.0)
+        harness.widget.update_layout_width()
+        qapp.processEvents()
+        host.on_view_changed()
+        assert calls[-1][:2] == THUMBNAIL_TARGET_SIZE
+    finally:
+        host.detach()
+        harness.close()
+
+
+def test_strip_tile_fits_one_array_layer():
+    """A tile is uploaded 1:1 into one array layer, so it never exceeds it."""
+    tile_w, tile_h = strip_tile_size()
+
+    assert 0 < tile_w <= LAYER_PX and 0 < tile_h <= LAYER_PX
+
+
+def test_band_proxy_is_requested_at_the_thumbnail_size(qapp):
+    """The exporter seam gets the thumbnail size — the pyramid pick, not a cell."""
+    harness = _Harness(qapp)
+    host = harness.host(builder=_recording_builder)
+    try:
+        host.attach()
+        window = host.window()
+        assert window is not None
+
+        assert harness.exporter.calls, "the window must resolve its pixel pair"
+        for _snap, auto_crop, target_size in harness.exporter.calls:
+            assert target_size == THUMBNAIL_TARGET_SIZE
+            assert auto_crop is False
+    finally:
+        host.detach()
+        harness.close()
+
+
+def test_band_tile_is_not_letterboxed_for_a_thumbnail_shaped_pair(qapp):
+    """A 16:9 proxy fills its thumbnail: no bars inside the cell.
+
+    The uniform letterbox comes from the plan (canvas vs content), so a
+    thumbnail-shaped source pair must arrive at full-bleed UVs — the phase-2
+    cell-aspect tile reported a sub-unit letterbox on every tile.
+    """
+    from tabs.image_compare.services.video_snapshot_rendering import (
+        strip_window as strip_window_module,
+    )
+
+    harness = _Harness(qapp)
+    # The harness exporter returns a 160x90 (16:9) pair: the thumbnail shape.
+    host = harness.host(builder=_recording_builder)
+    try:
+        host.attach()
+        window = host.window()
+        assert window is not None
+
+        for tile in window.tiles:
+            letterbox, _canvas_letterbox, content_rect = (
+                strip_window_module.tile_letterbox_geometry(tile)
+            )
+            assert letterbox == (0.0, 0.0, 1.0, 1.0)
+            assert content_rect == (0, 0, tile.tile_w, tile.tile_h)
+    finally:
+        host.detach()
         harness.close()
 
 

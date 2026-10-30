@@ -22,8 +22,11 @@ stays live (fail-open — placeholder tiles are the renderer's job, a stale
 frame beats a blank band).
 
 Geometry single source: :func:`timeline_strip_layout` asks the timeline's own
-``strip_block_layout`` for blocks and tile width, so this module holds no block
-formula of its own. Phase 3 deletes the QPainter thumbnail pipeline
+``strip_block_layout`` for the visible blocks (its representative frames and
+the block width that locates the first one), and takes the tile from
+:func:`strip_recording.strip_tile_size` — one filmstrip thumbnail, never the
+block cell's aspect. So this module holds no block formula and no tile formula
+of its own. Phase 3 deletes the QPainter thumbnail pipeline
 (``ThumbnailService`` / ``ThumbnailCoordinator``) — nothing here touches it.
 """
 

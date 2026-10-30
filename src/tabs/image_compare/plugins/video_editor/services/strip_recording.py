@@ -14,6 +14,10 @@ carries a second geometry formula:
   timeline fps — a block is not a frame: at the fitted zoom one block spans
   several frames, and ``block / fps`` would ask the recording for the wrong
   instant (owner-visible: every tile showing frame 0's neighbourhood).
+* :func:`strip_tile_size` is the tile geometry: one FILMSTRIP THUMBNAIL, the
+  same ``THUMBNAIL_TARGET_SIZE`` the QPainter strip renders, never the block
+  cell's own aspect (see its docstring — the cell aspect is what letterboxes
+  every frame into a narrow sliver).
 * :class:`StripRecordingAdapter` is the object handed to ``build_window``:
   ``evaluate_at`` delegates to the recording, ``images_for`` delegates to the
   exporter's proxy seam (never a decode on the interaction path).
@@ -34,6 +38,9 @@ from sli_ui_toolkit.ui.widgets.composite.timeline_widget import (
     viewport as timeline_viewport,
 )
 
+from tabs.image_compare.services.video_snapshot_rendering.geometry import (
+    THUMBNAIL_TARGET_SIZE,
+)
 from tabs.image_compare.services.video_snapshot_rendering.strip_window import (
     LAYER_PX,
     StripBlockLayout,
@@ -101,14 +108,44 @@ def strip_visible_span(timeline):
     return (content_start_x, start_x, end_x)
 
 
+def strip_tile_size() -> tuple[int, int]:
+    """The band's tile geometry: one FILMSTRIP THUMBNAIL, not the block cell.
+
+    A strip cell is the same thumbnail the QPainter strip rendered, and
+    ``THUMBNAIL_TARGET_SIZE`` exactly is what selects that path: the plan
+    builder's ``is_thumbnail_target_size`` check renders the pair full-bleed
+    (``cover_source_to_content``, no pads, no ``overlay_clip_rect``) only at
+    160x90, and every other target takes the fit-inside path with aspect pads.
+
+    Planning the tile at the block cell's own aspect (the phase-2 wiring) sent
+    every frame down that fit path, so the band drew a letterboxed frame with
+    black bars inside each cell — on a wide/zoomed cell (or through the
+    ``LAYER_PX`` cap, which froze the tile at 256 while the cell kept
+    growing) the visible content collapsed to a narrow vertical sliver. The
+    cell aspect never has to reach the plane: the one-pass renderer stretches
+    one tile over one block cell, exactly as the timeline stretched the
+    160x90 pixmap into it.
+
+    Clamped to ``LAYER_PX`` because one tile is uploaded 1:1 into one
+    array layer; at 160x90 the clamp never bites (it only exists for the
+    contracts that allow a caller-chosen tile).
+    """
+    width, height = THUMBNAIL_TARGET_SIZE
+    return (
+        max(1, min(int(width), int(LAYER_PX))),
+        max(1, min(int(height), int(LAYER_PX))),
+    )
+
+
 def timeline_strip_layout(timeline, *, fps):
     """``(layout, first_block, count)`` for the band's current view, or ``None``.
 
     One ``strip_block_layout`` call decides every number here: the first
     visible block, the block count, each block's representative frame and the
-    block width (which becomes the tile width). ``STRIP_HEIGHT`` is the block
-    height. Columns equal blocks because the band is one row — so tile ``i``
-    of the window lands on block ``i`` of the strip.
+    block width (which only locates the first block — the tile is the
+    thumbnail, see :func:`strip_tile_size`). Columns equal blocks because the
+    band is one row — so tile ``i`` of the window lands on block ``i`` of the
+    strip.
     """
     try:
         total = int(getattr(timeline, "_total_frames", 0) or 0)
@@ -135,20 +172,9 @@ def timeline_strip_layout(timeline, *, fps):
     draw_w = float(blocks[0][1])
     if draw_w <= 0.0:
         return None
-    try:
-        strip_height = float(timeline.STRIP_HEIGHT)
-    except Exception:
-        return None
-    if strip_height <= 0.0:
-        return None
     first_block = max(0, int(round((blocks[0][0] - content_start_x) / draw_w)))
     visible = blocks[:MAX_BLOCKS]
-    # One tile is uploaded 1:1 into one array layer (``strip_window.LAYER_PX``),
-    # so a block wider than a layer is planned at the layer size; the pass
-    # stretches the window grid over the band, which keeps each tile on its own
-    # block cell. The cap only bites at extreme zoom, never at the fitted view.
-    tile_w = min(int(round(draw_w)), int(LAYER_PX))
-    tile_h = min(int(round(strip_height)), int(LAYER_PX))
+    tile_w, tile_h = strip_tile_size()
     if tile_w <= 0 or tile_h <= 0:
         return None
     layout = TimelineStripLayout(
@@ -227,6 +253,7 @@ __all__ = [
     "StripRecordingAdapter",
     "TimelineStripLayout",
     "proxy_pair_for",
+    "strip_tile_size",
     "strip_visible_span",
     "timeline_strip_layout",
 ]
